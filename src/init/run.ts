@@ -22,6 +22,8 @@ export type InitOptions = {
   /** Asked once with the plan; false aborts. */
   confirm: (plan: string) => Promise<boolean>;
   log: (line: string) => void;
+  /** Download local models after configuring, so the first search is not a download. */
+  prefetchModels?: () => Promise<unknown>;
   /** Runs `claude mcp …`; injectable for tests. Null when the CLI is missing. */
   claudeCli?: ((args: string[]) => { status: number | null }) | null;
 };
@@ -53,6 +55,7 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
   if (clients.length === 0) {
     log("No supported MCP clients found. Add it by hand:");
     log(`  command: ${[stdioServer(env.platform).command, ...stdioServer(env.platform).args].join(" ")}`);
+    if (!options.dryRun) await options.prefetchModels?.();
     return { configured: [] };
   }
 
@@ -98,6 +101,8 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
       log(`  ✗ ${client.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+
+  if (configured.length > 0) await options.prefetchModels?.();
 
   log(`\nDone. Restart ${configured.length === 1 ? "the app" : "the apps"} to load Make0 Brain.`);
   const hints = planned.filter(({ client }) => configured.includes(client.id) && client.rulesHint);

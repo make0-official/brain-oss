@@ -119,6 +119,36 @@ test("dry run and declined confirm change nothing", async () => {
   assert.equal(fs.existsSync(path.join(env.home, ".cursor", "mcp.json")), false);
 });
 
+test("models download after configuring, and not on dry run or decline", async () => {
+  const env = tempHome();
+  fs.mkdirSync(path.join(env.home, ".cursor"));
+  const order: string[] = [];
+  const prefetchModels = async () => {
+    order.push(fs.existsSync(path.join(env.home, ".cursor", "mcp.json")) ? "models-after-config" : "models-before-config");
+  };
+  await runInit({ env, dryRun: true, confirm: async () => true, log: () => {}, claudeCli: null, prefetchModels });
+  await runInit({ env, confirm: async () => false, log: () => {}, claudeCli: null, prefetchModels });
+  assert.deepEqual(order, []);
+  const log: string[] = [];
+  await runInit({ env, confirm: async () => true, log: (line) => log.push(line), claudeCli: null, prefetchModels });
+  assert.deepEqual(order, ["models-after-config"]);
+  assert.ok(log.some((line) => /Restart the app/.test(line)));
+});
+
+test("models still download when no client is found", async () => {
+  let calls = 0;
+  await runInit({
+    env: tempHome(),
+    confirm: async () => true,
+    log: () => {},
+    claudeCli: null,
+    prefetchModels: async () => {
+      calls += 1;
+    },
+  });
+  assert.equal(calls, 1);
+});
+
 test("unknown client ids are rejected", async () => {
   await assert.rejects(
     runInit({ env: tempHome(), clientIds: ["notepad"], confirm: async () => true, log: () => {}, claudeCli: null }),

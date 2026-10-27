@@ -1,6 +1,6 @@
 {
   "name": "@make0-ai/brain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One shared, versioned memory for Claude Code, Cursor, Codex, and every MCP agent. Local-first, offline, MIT.",
   "author": "Make0 (https://make0.ai)",
   "mcpName": "io.github.make0-official/brain-oss",

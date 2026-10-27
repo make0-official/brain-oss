@@ -37,7 +37,7 @@ Make0 Brain is one memory that all of them share:
 npx @make0-ai/brain init
 ```
 
-`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. It shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each app. Restart the apps afterwards.
+`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. It shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each app. It then downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
 
 Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, and VS Code keep rules in settings, so `init` prints the same text for you to paste:
 
@@ -71,7 +71,7 @@ pbpaste | npx @make0-ai/brain import -          # e.g. a memory dump copied from
 npx @make0-ai/brain view
 ```
 
-The first save or search downloads two small models (~50 MB) to `~/.make0/models`. Data lives in `~/.make0/brain.db`.
+Models live in `~/.make0/models` and data in `~/.make0/brain.db`. If you skip `init` (or pass `--no-models`), the first save or search downloads the models instead.
 
 ## One context across all agents
 
@@ -256,7 +256,7 @@ A one-command port from local to Make0 cloud is coming. The `export --json` bund
 
 ```text
 make0-brain                      Run the MCP server over stdio
-make0-brain init                 Add Make0 Brain to your AI apps (--dry-run, --yes, --clients, --no-rules)
+make0-brain init                 Add Make0 Brain to your AI apps and download the models (--dry-run, --yes, --clients, --no-rules, --no-models)
 make0-brain import <path…>       Import files, folders, or a vault (--detect, -, --extract, --dry-run, --yes)
 make0-brain export [dir]         Markdown export (--json [file] for the bundle)
 make0-brain view                 Open the memory viewer in a browser (--port, --no-open)

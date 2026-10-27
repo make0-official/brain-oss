@@ -3,7 +3,7 @@ import path from "node:path";
 import { Brain } from "./brain";
 import { HashingEmbeddingProvider, LexicalPairScorer } from "./embeddings/hashing";
 import { ApiEmbeddingProvider } from "./embeddings/api";
-import { LocalCrossEncoder, LocalEmbeddingProvider } from "./embeddings/local";
+import { LocalCrossEncoder, LocalEmbeddingProvider, type WarmableModel } from "./embeddings/local";
 import type { EmbeddingProvider } from "./embeddings/provider";
 import { LlmClient, resolveLlmConfig } from "./llm/client";
 import { createLlmFeatures } from "./llm/features";
@@ -58,4 +58,19 @@ export function createEmbeddingProvider(
     return new ApiEmbeddingProvider(new LlmClient(llmConfig));
   }
   return new LocalEmbeddingProvider(modelDir);
+}
+
+/**
+ * Local models this config will run, for `init` to download before any app
+ * starts the server: none with `hashing`, only the reranker with `api` embeddings.
+ */
+export function localModelsFor(
+  env: Record<string, string | undefined> = process.env,
+  modelDir = path.join(brainHome(), "models"),
+): WarmableModel[] {
+  if (env.MAKE0_BRAIN_EMBEDDINGS === "hashing") return [];
+  const models: WarmableModel[] = [];
+  if (env.MAKE0_BRAIN_EMBEDDINGS !== "api") models.push(new LocalEmbeddingProvider(modelDir));
+  models.push(new LocalCrossEncoder(modelDir));
+  return models;
 }

@@ -28,6 +28,43 @@ async function loadTransformers(cacheDir: string): Promise<Transformers> {
   return transformersPromise;
 }
 
+/** Bytes downloaded so far for one model, summed over its files. */
+export type ModelProgress = {
+  model: string;
+  loaded: number;
+  total: number;
+  /** False when every file came from the local cache. */
+  downloading: boolean;
+};
+
+export type ModelProgressCallback = (progress: ModelProgress) => void;
+
+/** A local model that can be downloaded and checked before first use. */
+export interface WarmableModel {
+  readonly model: string;
+  warmUp(onProgress?: ModelProgressCallback): Promise<void>;
+}
+
+type ProgressEvent = { status: string; file?: string; loaded?: number; total?: number };
+
+/** Turn transformers.js per-file events into one running total per model. */
+function trackProgress(model: string, onProgress?: ModelProgressCallback): (event: ProgressEvent) => void {
+  const files = new Map<string, { loaded: number; total: number }>();
+  let downloading = false;
+  return (event) => {
+    if (event.status === "download") downloading = true;
+    if (event.status !== "progress" || !event.file || !event.total) return;
+    files.set(event.file, { loaded: event.loaded ?? 0, total: event.total });
+    let loaded = 0;
+    let total = 0;
+    for (const file of files.values()) {
+      loaded += file.loaded;
+      total += file.total;
+    }
+    onProgress?.({ model, loaded, total, downloading });
+  };
+}
+
 function truncate(value: string, maxChars: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) return normalized;
@@ -35,7 +72,7 @@ function truncate(value: string, maxChars: number): string {
 }
 
 /** Downloads once to ~/.make0/models; runs on CPU, no key. */
-export class LocalEmbeddingProvider implements EmbeddingProvider {
+export class LocalEmbeddingProvider implements EmbeddingProvider, WarmableModel {
   readonly model = LOCAL_EMBEDDING_MODEL;
   readonly dimensions = MEMORY_EMBEDDING_DIMENSIONS;
   private extractor: Promise<(texts: string[], options: object) => Promise<{ tolist(): number[][] }>> | null =
@@ -43,16 +80,27 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
 
   constructor(private cacheDir = defaultModelCacheDir()) {}
 
-  private load() {
+  private load(onProgress?: ModelProgressCallback) {
     if (!this.extractor) {
       this.extractor = loadTransformers(this.cacheDir).then(
         (transformers) =>
-          transformers.pipeline("feature-extraction", this.model, { dtype: "q8" }) as unknown as Promise<
-            (texts: string[], options: object) => Promise<{ tolist(): number[][] }>
-          >,
+          transformers.pipeline("feature-extraction", this.model, {
+            dtype: "q8",
+            progress_callback: trackProgress(this.model, onProgress),
+          }) as unknown as Promise<(texts: string[], options: object) => Promise<{ tolist(): number[][] }>>,
       );
+      // A failed download must not poison later attempts in the same process.
+      this.extractor.catch(() => {
+        this.extractor = null;
+      });
     }
     return this.extractor;
+  }
+
+  /** Download (with progress) and run one embedding, so the first real one is instant. */
+  async warmUp(onProgress?: ModelProgressCallback): Promise<void> {
+    await this.load(onProgress);
+    await this.embed(["warm up"]);
   }
 
   async embed(texts: string[]): Promise<Array<number[] | null>> {
@@ -72,26 +120,39 @@ type CrossEncoder = {
 };
 
 /** ms-marco cross-encoder: one logit per pair, sigmoid to 0..1. */
-export class LocalCrossEncoder implements PairScorer {
+export class LocalCrossEncoder implements PairScorer, WarmableModel {
   readonly model = LOCAL_CROSS_ENCODER_MODEL;
   private loaded: Promise<CrossEncoder> | null = null;
 
   constructor(private cacheDir = defaultModelCacheDir()) {}
 
-  private load(): Promise<CrossEncoder> {
+  private load(onProgress?: ModelProgressCallback): Promise<CrossEncoder> {
     if (!this.loaded) {
+      const progress_callback = trackProgress(this.model, onProgress);
       this.loaded = loadTransformers(this.cacheDir).then(async (transformers) => {
         const [tokenizer, model] = await Promise.all([
-          transformers.AutoTokenizer.from_pretrained(this.model),
-          transformers.AutoModelForSequenceClassification.from_pretrained(this.model, { dtype: "q8" }),
+          transformers.AutoTokenizer.from_pretrained(this.model, { progress_callback }),
+          transformers.AutoModelForSequenceClassification.from_pretrained(this.model, {
+            dtype: "q8",
+            progress_callback,
+          }),
         ]);
         return {
           tokenizer: tokenizer as unknown as CrossEncoder["tokenizer"],
           model: model as unknown as CrossEncoder["model"],
         };
       });
+      this.loaded.catch(() => {
+        this.loaded = null;
+      });
     }
     return this.loaded;
+  }
+
+  /** Download (with progress) and score one pair, so the first real search is instant. */
+  async warmUp(onProgress?: ModelProgressCallback): Promise<void> {
+    await this.load(onProgress);
+    await this.score("warm up", ["warm up"]);
   }
 
   async score(a: string, pairs: string[]): Promise<number[]> {

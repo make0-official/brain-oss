@@ -6,11 +6,12 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { version } from "../package.json";
-import { defaultDbPath, openBrain } from "./config";
+import { brainHome, defaultDbPath, localModelsFor, openBrain } from "./config";
 import { loadEnvFiles } from "./env";
 import { writeBundle, writeMarkdownExport } from "./export/export";
 import { runImport, stdinImportFile } from "./import/run";
 import { collectImportFiles, detectAgentFiles, type ImportFile } from "./import/sources";
+import { prefetchModels } from "./init/models";
 import { runInit } from "./init/run";
 import { resolveLlmConfig } from "./llm/client";
 import { createBrainMcpServer } from "./mcp/server";
@@ -27,6 +28,7 @@ Usage:
                                    Cursor, Windsurf, VS Code, Codex, Gemini CLI
       --clients <ids>              Only these (comma-separated)
       --no-rules                   Skip the "search Brain first" rule
+      --no-models                  Skip downloading the local models now
       --dry-run, --yes
   make0-brain import <path…>       Import Markdown files, folders, or an Obsidian vault
   make0-brain import --detect      Import CLAUDE.md, AGENTS.md, Cursor/Windsurf rules
@@ -102,6 +104,13 @@ async function init(args: string[]): Promise<void> {
     dryRun: args.includes("--dry-run"),
     confirm: () => confirm("\nApply these changes?", args, true),
     log: (line) => console.log(line),
+    prefetchModels: args.includes("--no-models")
+      ? undefined
+      : () =>
+          prefetchModels(localModelsFor(), path.join(brainHome(), "models"), {
+            log: (line) => console.log(line),
+            write: process.stdout.isTTY ? (text) => process.stdout.write(text) : undefined,
+          }),
   });
 }
 
