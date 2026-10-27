@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personal brain</title>
+    <link rel="icon" href="/logo.png" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f1efea;
+        --chrome: #fbfaf8;
+        --title: #020617;
+        --muted: #334155;
+        --panel-border: #d0d7de;
+        --panel-bg: #fbfaf8;
+        --card: #fff;
+        --card-border: rgba(0, 0, 0, 0.06);
+        --line: rgba(0, 0, 0, 0.08);
+        --hover: rgba(0, 0, 0, 0.04);
+        --selected: rgba(15, 23, 42, 0.55);
+        --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+        --grid-a: rgba(15, 23, 42, 0.045);
+        --grid-b: rgba(15, 23, 42, 0.08);
+        --grid-floor: #f1efea;
+      }
+      html.dark {
+        color-scheme: dark;
+        --bg: #080a0e;
+        --chrome: #080a0e;
+        --title: #fff;
+        --muted: #94a3b8;
+        --panel-border: #30363d;
+        --panel-bg: #06080c;
+        --card: rgba(255, 255, 255, 0.04);
+        --card-border: rgba(255, 255, 255, 0.1);
+        --line: rgba(255, 255, 255, 0.1);
+        --hover: rgba(255, 255, 255, 0.06);
+        --selected: rgba(255, 255, 255, 0.55);
+        --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        --grid-a: rgba(226, 232, 240, 0.03);
+        --grid-b: rgba(226, 232, 240, 0.055);
+        --grid-floor: #080a0e;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--title);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .stage { position: relative; height: 100%; overflow: hidden; }
+      .grid {
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(var(--grid-b) 3px, transparent 3px),
+          linear-gradient(90deg, var(--grid-b) 3px, transparent 3px),
+          linear-gradient(var(--grid-a) 1.5px, transparent 1.5px),
+          linear-gradient(90deg, var(--grid-a) 1.5px, var(--grid-floor) 1.5px);
+        background-size: 75px 75px, 75px 75px, 15px 15px, 15px 15px;
+        background-position: -3px -3px, -3px -3px, -1.5px -1.5px, -1.5px -1.5px;
+        -webkit-mask-image: radial-gradient(ellipse at center, transparent 38%, #000 100%);
+        mask-image: radial-gradient(ellipse at center, transparent 38%, #000 100%);
+      }
+      .chrome {
+        position: absolute;
+        z-index: 5;
+        left: 12px;
+        right: 12px;
+        top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .cluster { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; }
+      .tools { display: flex; margin-left: auto; align-items: center; gap: 6px; }
+      .pill {
+        display: flex;
+        height: 36px;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--chrome) 88%, transparent);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+      .title-pill { min-width: 0; padding: 0 12px; }
+      .title-pill strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; letter-spacing: -0.01em; }
+      .badge {
+        flex-shrink: 0;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .count-pill {
+        display: none;
+        flex-shrink: 0;
+        padding: 0 12px;
+        font-size: 11px;
+        font-weight: 550;
+        white-space: nowrap;
+      }
+      .count-pill .dot { margin: 0 6px; color: var(--muted); }
+      @media (min-width: 1024px) { .count-pill { display: flex; } }
+      .count-pill[hidden] { display: none !important; }
+      .icon-btn, .search {
+        height: 36px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--chrome) 88%, transparent);
+        color: var(--title);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+      .icon-btn {
+        position: relative;
+        width: 36px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        cursor: pointer;
+      }
+      .icon-btn:hover { background: var(--hover); }
+      .theme-btn .theme-sun { display: none !important; }
+      .theme-btn .theme-moon { display: block; }
+      html.dark .theme-btn .theme-moon { display: none !important; }
+      html.dark .theme-btn .theme-sun { display: block !important; }
+      .bin-count {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: #b91c1c;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 16px;
+      }
+      .bin-count[hidden] { display: none !important; }
+      .search {
+        display: flex;
+        width: min(13rem, calc(100vw - 8rem));
+        align-items: center;
+        gap: 6px;
+        padding: 0 10px 0 12px;
+      }
+      .search.searching { border-color: #0ea5e9; }
+      html.dark .search.searching { border-color: #67e8f9; }
+      .search input {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        outline: none;
+      }
+      .search input::placeholder { color: var(--muted); }
+      .search svg { flex-shrink: 0; color: var(--muted); }
+      .search.searching svg { color: #0284c7; }
+      html.dark .search.searching svg { color: #67e8f9; }
+      .board {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 56px 16px 84px;
+      }
+      .board.message {
+        justify-content: center;
+        overflow: hidden;
+      }
+      .column {
+        display: flex;
+        height: fit-content;
+        max-height: calc(100% - 1.5rem);
+        width: min(18.5rem, calc(100vw - 2.5rem));
+        flex-shrink: 0;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: var(--panel-bg);
+        box-shadow: var(--shadow);
+      }
+      .column header {
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 12px 10px;
+      }
+      .column h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+      .column header p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+      .column.new, .column.archived { border-style: dashed; background: color-mix(in srgb, var(--panel-bg) 70%, transparent); }
+      .add, .save, .restore {
+        display: flex;
+        height: 32px;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--title);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 550;
+        cursor: pointer;
+      }
+      .add { margin-top: 10px; }
+      .add:hover, .save:hover, .restore:hover { background: var(--hover); }
+      .save:disabled, .restore:disabled, .danger:disabled { cursor: not-allowed; opacity: 0.45; }
+      .actions { display: flex; gap: 8px; }
+      .actions .save { flex: 1; }
+      .danger {
+        height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: transparent;
+        color: #b91c1c;
+        padding: 0 14px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 550;
+        cursor: pointer;
+      }
+      .danger:hover { background: rgba(185, 28, 28, 0.08); }
+      .column ul {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        gap: 8px;
+        margin: 0;
+        overflow-y: auto;
+        padding: 8px;
+        list-style: none;
+      }
+      .card {
+        position: relative;
+        width: 100%;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--card);
+        color: inherit;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+        cursor: pointer;
+        text-align: left;
+      }
+      .card.selected { border-color: var(--selected); box-shadow: 0 0 0 1px var(--selected); }
+      .card-body { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; }
+      .card p { margin: 0; min-width: 0; flex: 1; font-size: 13px; line-height: 1.35; }
+      .mark {
+        display: grid;
+        width: 14px;
+        height: 14px;
+        margin-top: 2px;
+        flex-shrink: 0;
+        place-items: center;
+        border-radius: 999px;
+        background: #e2e8f0;
+        color: #334155;
+        font-size: 8px;
+        font-weight: 700;
+      }
+      html.dark .mark { background: #334155; color: #e2e8f0; }
+      .mark.claude { background: #d97757; color: #fff; }
+      .mark.chatgpt { background: #10a37f; color: #fff; }
+      .mark.cursor { background: #111; color: #fff; }
+      html.dark .mark.cursor { background: #f8fafc; color: #111; }
+      .logo, .mark.logo-mark {
+        display: block;
+        object-fit: cover;
+        background: #000;
+      }
+      .logo { width: 18px; height: 18px; border-radius: 4px; }
+      .mark.logo-mark { width: 14px; height: 14px; border-radius: 3px; }
+      .mark.mcp { background: #6366f1; color: #fff; }
+      .edited { margin: 0; padding: 0 12px 8px 34px; font-size: 10px; color: var(--muted); }
+      .empty, .status {
+        display: flex;
+        height: 100%;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        text-align: center;
+      }
+      .status p, .empty p { margin: 0; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--chrome); padding: 8px 16px; font-size: 14px; box-shadow: var(--shadow); }
+      .empty { flex-direction: column; gap: 8px; }
+      .empty h1 { margin: 8px 0 0; font-size: 14px; font-weight: 600; }
+      .empty .hint { max-width: 28rem; border: 0; background: transparent; box-shadow: none; padding: 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
+      .detail {
+        position: absolute;
+        z-index: 6;
+        top: 60px;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        width: min(24rem, calc(100vw - 24px));
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: var(--chrome);
+        box-shadow: var(--shadow);
+      }
+      .detail[hidden] { display: none; }
+      .detail header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        border-bottom: 1px solid var(--line);
+        padding: 14px 14px 12px;
+      }
+      .detail h2 { margin: 0; font-size: 14px; }
+      .detail header p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+      .detail form, .versions { overflow: auto; padding: 14px; }
+      .detail label { display: block; margin-bottom: 4px; font-size: 11px; color: var(--muted); }
+      .field-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+      .field-label label { margin-bottom: 0; }
+      .field-label .text-btn { margin-top: 0; }
+      .detail input, .detail textarea {
+        width: 100%;
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        background: var(--card);
+        color: var(--title);
+        font: inherit;
+        font-size: 14px;
+      }
+      .detail input { height: 36px; margin-bottom: 12px; padding: 0 10px; }
+      .detail textarea { min-height: 140px; margin-bottom: 12px; padding: 10px; resize: vertical; line-height: 1.45; }
+      .form-error { min-height: 1.2em; margin: 8px 0 0; font-size: 12px; color: #b91c1c; }
+      .versions { border-top: 1px solid var(--line); }
+      .versions h3 { margin: 0 0 4px; font-size: 12px; }
+      .version {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 0;
+        border-top: 1px solid var(--line);
+      }
+      .version:first-child { border-top: 0; }
+      .version .copy { min-width: 0; }
+      .version p { margin: 0; font-size: 12px; line-height: 1.4; }
+      .version .who { margin-bottom: 4px; color: var(--muted); font-size: 11px; }
+      .version .preview {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+      }
+      .version .text-btn { margin-top: 6px; }
+      .version-full {
+        margin: 0;
+        white-space: pre-wrap;
+        border-radius: 12px;
+        background: var(--card);
+        padding: 12px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .version.current .who { color: var(--title); font-weight: 650; }
+      .current-mark {
+        display: inline-block;
+        margin-left: 6px;
+        border-radius: 999px;
+        background: var(--title);
+        color: var(--chrome);
+        padding: 1px 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        vertical-align: 1px;
+      }
+      .make-current {
+        display: inline-flex;
+        flex-shrink: 0;
+        height: 28px;
+        margin-top: 1px;
+        align-items: center;
+        border: 0;
+        border-radius: 999px;
+        background: var(--title);
+        color: var(--chrome);
+        padding: 0 10px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 650;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .make-current:hover { opacity: 0.82; }
+      .text-btn {
+        margin-top: 6px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 0;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .modal {
+        position: absolute;
+        z-index: 20;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .modal[hidden] { display: none; }
+      .modal-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.35); }
+      .modal-card {
+        position: relative;
+        display: flex;
+        width: min(36rem, 100%);
+        max-height: min(80vh, 40rem);
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: var(--chrome);
+        box-shadow: var(--shadow);
+      }
+      .modal-card header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid var(--line);
+        padding: 14px 14px 12px;
+      }
+      .modal-card h2 { margin: 0; flex: 1; font-size: 15px; }
+      .modal-body { overflow: auto; padding: 14px; }
+      .modal.writer .modal-card { width: min(56rem, 100%); height: min(88vh, 52rem); max-height: none; }
+      .modal.writer .modal-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+      .writer-form { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+      .writer-form label { font-size: 11px; color: var(--muted); }
+      .writer-form input, .writer-form textarea {
+        width: 100%;
+        border: 1px solid var(--panel-border);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--title);
+        font: inherit;
+      }
+      .writer-form input { height: 36px; padding: 0 10px; font-size: 14px; }
+      .writer-form textarea {
+        flex: 1;
+        min-height: 16rem;
+        padding: 14px;
+        font-size: 15px;
+        line-height: 1.55;
+        resize: none;
+      }
+      .writer-form .actions { justify-content: flex-end; align-items: center; margin-top: 4px; }
+      .writer-form .actions .text-btn { margin-top: 0; }
+      .writer-form .actions .save { flex: 0 0 auto; min-width: 7rem; }
+      .config-row { margin: 0 0 14px; }
+      .config-row dt { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+      .config-row dd { margin: 4px 0 0; font-size: 14px; line-height: 1.45; }
+      .config-row .model { color: var(--muted); font-size: 12px; }
+      .how { white-space: pre-wrap; border-radius: 12px; background: var(--card); padding: 12px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+      .sync-chip {
+        height: 36px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--chrome) 88%, transparent);
+        color: var(--title);
+        padding: 0 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 650;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+        cursor: pointer;
+      }
+      .sync-chip:hover { background: var(--hover); }
+      .hosted-ad {
+        position: absolute;
+        z-index: 4;
+        left: 12px;
+        bottom: 12px;
+        display: flex;
+        min-width: 0;
+        max-width: min(28rem, calc(100vw - 28rem));
+        align-items: center;
+        gap: 2px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--chrome) 92%, transparent);
+        padding: 5px 4px 5px 6px;
+        color: var(--title);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+      .hosted-ad[hidden] { display: none !important; }
+      .hosted-ad a {
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        align-items: center;
+        gap: 8px;
+        color: inherit;
+        text-decoration: none;
+      }
+      .hosted-ad img { flex-shrink: 0; border-radius: 6px; }
+      .hosted-ad span { min-width: 0; }
+      .hosted-ad strong { display: block; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .hosted-ad em {
+        display: block;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 11px;
+        font-style: normal;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .hosted-ad a:hover strong { text-decoration: underline; }
+      .hosted-dismiss {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .hosted-dismiss:hover { background: var(--hover); color: var(--title); }
+      .sync-section { margin: 0 0 16px; }
+      .sync-section h3 { margin: 0 0 4px; font-size: 13px; }
+      .sync-section p { margin: 0 0 8px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+      .sync-cmd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .sync-cmd code {
+        flex: 1;
+        overflow-x: auto;
+        border-radius: 8px;
+        background: var(--card);
+        padding: 8px 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .sync-cmd button {
+        flex-shrink: 0;
+        height: 28px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--title);
+        padding: 0 10px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      @media (max-width: 720px) { .hosted-ad { max-width: 11rem; } }
+      .vector {
+        max-height: 220px;
+        overflow: auto;
+        margin: 8px 0 0;
+        border-radius: 12px;
+        background: var(--card);
+        padding: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .bin-row { padding: 12px 0; border-top: 1px solid var(--line); }
+      .bin-row h3 { margin: 0 0 4px; font-size: 12px; }
+      .bin-row p { margin: 0; font-size: 13px; line-height: 1.4; }
+      .bin-actions { display: flex; gap: 8px; margin-top: 8px; }
+      .bin-actions .save, .bin-actions .danger { width: auto; }
+      .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="grid" aria-hidden="true"></div>
+      <header class="chrome">
+        <div class="cluster">
+          <div class="pill title-pill">
+            <img class="logo" src="/logo.png" alt="" width="18" height="18" />
+            <strong id="title">Personal brain</strong>
+            <span class="badge">System</span>
+          </div>
+          <div class="pill count-pill" id="counts" hidden></div>
+        </div>
+        <div class="tools">
+          <label class="search" id="search-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.3-4.3"></path>
+            </svg>
+            <input id="search" type="search" placeholder="Search memories" aria-label="Search memories" />
+          </label>
+          <button class="icon-btn" id="bin" type="button" aria-label="Recycle bin">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18"></path>
+              <path d="M8 6V4h8v2"></path>
+              <path d="M19 6l-1 14H6L5 6"></path>
+              <path d="M10 11v6M14 11v6"></path>
+            </svg>
+            <span class="bin-count" id="bin-count" hidden>0</span>
+          </button>
+          <button class="icon-btn" id="settings" type="button" aria-label="Brain configuration">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 21v-7"></path>
+              <path d="M4 10V3"></path>
+              <path d="M12 21v-9"></path>
+              <path d="M12 8V3"></path>
+              <path d="M20 21v-5"></path>
+              <path d="M20 12V3"></path>
+              <path d="M2 14h4"></path>
+              <path d="M10 8h4"></path>
+              <path d="M18 16h4"></path>
+            </svg>
+          </button>
+          <button class="icon-btn theme-btn" id="theme" type="button" aria-label="Switch to dark mode">
+            <svg class="theme-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+            </svg>
+            <svg class="theme-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+            </svg>
+          </button>
+          <button class="sync-chip" id="connect" type="button">Connect / import / export</button>
+          <button class="icon-btn" id="refresh" type="button" aria-label="Refresh memories">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+              <path d="M16 16h5v5"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div class="hosted-ad" id="hosted-ad">
+          <a href="https://make0.ai" target="_blank" rel="noopener noreferrer">
+            <img src="/logo.png" alt="" width="22" height="22" />
+            <span>
+              <strong>Use hosted Brain on Make0</strong>
+              <em>Always-on MCP with OAuth or an API key. Multiple brains. A 3D view.</em>
+            </span>
+          </a>
+          <button class="hosted-dismiss" id="dismiss-ad" type="button" aria-label="Dismiss hosted Brain ad">×</button>
+        </div>
+      <main class="board message" id="board">
+        <div class="status"><p>Loading Brain…</p></div>
+      </main>
+      <aside class="detail" id="detail" hidden>
+        <header>
+          <div style="min-width:0;flex:1">
+            <h2 id="detail-title">Memory</h2>
+            <p id="detail-meta"></p>
+            <button class="text-btn" id="show-embedding" type="button" hidden>View embedding</button>
+          </div>
+          <button class="icon-btn" id="close-detail" type="button" aria-label="Close memory" style="box-shadow:none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+          </button>
+        </header>
+        <form id="editor">
+          <label for="edit-category">Category</label>
+          <input id="edit-category" maxlength="80" required />
+          <div class="field-label">
+            <label for="edit-content">Memory</label>
+            <button class="text-btn" id="expand-writer" type="button">Larger writer</button>
+          </div>
+          <textarea id="edit-content" maxlength="4000" required></textarea>
+          <div class="actions">
+            <button class="save" id="save" type="submit">Save</button>
+            <button class="danger" id="delete" type="button" hidden>Delete</button>
+          </div>
+          <p class="form-error" id="form-error"></p>
+        </form>
+        <section class="versions" id="versions" hidden>
+          <h3>Versions</h3>
+          <div id="version-list"></div>
+        </section>
+      </aside>
+      <div class="modal" id="modal" hidden>
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <header>
+            <h2 id="modal-title">Brain</h2>
+            <button class="icon-btn" id="modal-close" type="button" aria-label="Close" style="box-shadow:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+            </button>
+          </header>
+          <div class="modal-body" id="modal-body"></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const LABELS = { user: "You", make0: "Make0", claude: "Claude", chatgpt: "ChatGPT", cursor: "Cursor", mcp: "MCP" };
+      function writerLabel(writtenBy, writerName) {
+        if (writtenBy === "mcp" && writerName) return writerName;
+        return LABELS[writtenBy] || writerName || writtenBy;
+      }
+      const MARKS = { user: "Y", make0: "0", claude: "C", chatgpt: "G", cursor: "Cu", mcp: "M" };
+      const board = document.getElementById("board");
+      const counts = document.getElementById("counts");
+      const search = document.getElementById("search");
+      const searchWrap = document.getElementById("search-wrap");
+      const detail = document.getElementById("detail");
+      let memories = [];
+      let archived = [];
+      let selectedId = null;
+      let creating = false;
+
+      const hostedAd = document.getElementById("hosted-ad");
+      if (localStorage.getItem("make0-brain-hide-hosted-ad") === "1") hostedAd.hidden = true;
+      document.getElementById("dismiss-ad").addEventListener("click", () => {
+        localStorage.setItem("make0-brain-hide-hosted-ad", "1");
+        hostedAd.hidden = true;
+      });
+      const savedTheme = localStorage.getItem("make0-brain-view-theme");
+      if (savedTheme === "dark") document.documentElement.classList.add("dark");
+      syncThemeButton();
+
+      document.getElementById("theme").addEventListener("click", () => {
+        document.documentElement.classList.toggle("dark");
+        localStorage.setItem("make0-brain-view-theme", document.documentElement.classList.contains("dark") ? "dark" : "light");
+        syncThemeButton();
+      });
+      search.addEventListener("input", () => render());
+      document.getElementById("close-detail").addEventListener("click", closeDetail);
+      document.getElementById("editor").addEventListener("submit", (event) => {
+        event.preventDefault();
+        void saveMemory();
+      });
+      document.getElementById("delete").addEventListener("click", () => void deleteMemory());
+      document.getElementById("bin").addEventListener("click", () => openBin());
+      document.getElementById("settings").addEventListener("click", () => void openSettings());
+      document.getElementById("show-embedding").addEventListener("click", () => void openEmbedding());
+      document.getElementById("expand-writer").addEventListener("click", openWriter);
+      document.getElementById("connect").addEventListener("click", () => openSync());
+      document.getElementById("refresh").addEventListener("click", () => void reload(creating ? null : selectedId));
+      document.getElementById("modal-close").addEventListener("click", closeModal);
+      document.getElementById("modal-backdrop").addEventListener("click", closeModal);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          if (!document.getElementById("modal").hidden) closeModal();
+          else closeDetail();
+        }
+      });
+
+      function syncThemeButton() {
+        const dark = document.documentElement.classList.contains("dark");
+        document.getElementById("theme").setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+      }
+
+      function applyWriterToForm() {
+        const category = document.getElementById("writer-category");
+        const content = document.getElementById("writer-content");
+        if (!category || !content) return;
+        document.getElementById("edit-category").value = category.value;
+        document.getElementById("edit-content").value = content.value;
+      }
+
+      function closeModal() {
+        if (document.getElementById("modal").classList.contains("writer")) applyWriterToForm();
+        document.getElementById("modal").classList.remove("writer");
+        document.getElementById("modal").hidden = true;
+      }
+
+      function openModal(title, node, options) {
+        const modal = document.getElementById("modal");
+        modal.classList.toggle("writer", Boolean(options && options.writer));
+        document.getElementById("modal-title").textContent = title;
+        const body = document.getElementById("modal-body");
+        body.replaceChildren(node);
+        modal.hidden = false;
+      }
+
+      function openWriter() {
+        const form = document.createElement("form");
+        form.className = "writer-form";
+        const categoryLabel = document.createElement("label");
+        categoryLabel.htmlFor = "writer-category";
+        categoryLabel.textContent = "Category";
+        const category = document.createElement("input");
+        category.id = "writer-category";
+        category.maxLength = 80;
+        category.required = true;
+        category.value = document.getElementById("edit-category").value;
+        const contentLabel = document.createElement("label");
+        contentLabel.htmlFor = "writer-content";
+        contentLabel.textContent = "Memory";
+        const content = document.createElement("textarea");
+        content.id = "writer-content";
+        content.maxLength = 4000;
+        content.required = true;
+        content.value = document.getElementById("edit-content").value;
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const done = document.createElement("button");
+        done.type = "button";
+        done.className = "text-btn";
+        done.textContent = "Done";
+        done.addEventListener("click", closeModal);
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.className = "save";
+        save.textContent = "Save";
+        actions.append(done, save);
+        form.append(categoryLabel, category, contentLabel, content, actions);
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          applyWriterToForm();
+          document.getElementById("modal").classList.remove("writer");
+          closeModal();
+          void saveMemory();
+        });
+        openModal(document.getElementById("detail-title").textContent || "Memory", form, { writer: true });
+        content.focus();
+      }
+
+      function configRow(label, title, detail) {
+        const row = document.createElement("div");
+        row.className = "config-row";
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const value = document.createElement("dd");
+        const strong = document.createElement("strong");
+        strong.textContent = title;
+        value.append(strong);
+        if (detail) {
+          const note = document.createElement("div");
+          note.className = "model";
+          note.textContent = detail;
+          value.append(note);
+        }
+        row.append(term, value);
+        return row;
+      }
+
+      function closeDetail() {
+        selectedId = null;
+        creating = false;
+        detail.hidden = true;
+        render();
+      }
+
+      function ago(iso) {
+        const delta = Date.now() - new Date(iso).getTime();
+        const minutes = Math.round(delta / 60000);
+        if (minutes < 1) return "just now";
+        if (minutes < 60) return minutes + " minute" + (minutes === 1 ? "" : "s") + " ago";
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return hours + " hour" + (hours === 1 ? "" : "s") + " ago";
+        const days = Math.round(hours / 24);
+        return days + " day" + (days === 1 ? "" : "s") + " ago";
+      }
+
+      function matchesQuery(memory, query) {
+        const q = query.trim().toLowerCase();
+        if (!q) return true;
+        return (memory.content + " " + memory.category).toLowerCase().includes(q);
+      }
+
+      function columnsFor(query) {
+        const groups = new Map();
+        for (const memory of memories.filter((memory) => matchesQuery(memory, query))) {
+          const list = groups.get(memory.category) ?? [];
+          list.push(memory);
+          groups.set(memory.category, list);
+        }
+        return [...groups.entries()]
+          .map(([label, items]) => ({ label, items }))
+          .sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
+      }
+
+      function render() {
+        const query = search.value;
+        searchWrap.classList.toggle("searching", query.trim().length > 0);
+        const columns = columnsFor(query);
+        const categories = new Set(memories.map((memory) => memory.category));
+        const binCount = document.getElementById("bin-count");
+        binCount.hidden = archived.length === 0;
+        binCount.textContent = String(archived.length);
+        document.getElementById("bin").setAttribute("aria-label", archived.length ? "Recycle bin, " + archived.length + " archived" : "Recycle bin");
+        if (memories.length > 0) {
+          counts.hidden = false;
+          counts.innerHTML = categories.size + " " + (categories.size === 1 ? "category" : "categories") + '<span class="dot">·</span>' + memories.length + " " + (memories.length === 1 ? "memory" : "memories");
+        } else {
+          counts.hidden = true;
+        }
+        if (memories.length === 0 && !query.trim()) {
+          board.className = "board";
+          board.replaceChildren(renderNewCategory());
+          return;
+        }
+        if (memories.length === 0) {
+          board.className = "board message";
+          board.innerHTML = '<div class="empty"><h1>Your Brain is empty</h1><p class="hint">Add a memory with the form, or save one from Claude.</p></div>';
+          return;
+        }
+        if (columns.length === 0) {
+          board.className = "board message";
+          board.innerHTML = '<div class="status"><p>No matches for “' + escapeHtml(query.trim()) + '”</p></div>';
+          return;
+        }
+        board.className = "board";
+        const nodes = columns.map(renderColumn);
+        if (!query.trim()) nodes.unshift(renderNewCategory());
+        board.replaceChildren(...nodes);
+      }
+
+      function renderNewCategory() {
+        const section = document.createElement("section");
+        section.className = "column new";
+        const header = document.createElement("header");
+        const heading = document.createElement("h2");
+        heading.textContent = "New category";
+        const meta = document.createElement("p");
+        meta.textContent = "Name a list, then add a memory to it.";
+        const form = document.createElement("form");
+        const input = document.createElement("input");
+        input.maxLength = 80;
+        input.placeholder = "e.g. Health";
+        input.setAttribute("aria-label", "New category name");
+        input.style.cssText = "width:100%;height:32px;margin-top:10px;border:1px solid var(--panel-border);border-radius:8px;background:var(--card);color:var(--title);padding:0 8px;font:inherit;font-size:12px;";
+        const button = document.createElement("button");
+        button.className = "add";
+        button.type = "submit";
+        button.textContent = "Add memory";
+        form.append(input, button);
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          openComposer(input.value);
+        });
+        header.append(heading, meta, form);
+        section.append(header);
+        return section;
+      }
+
+      function renderColumn(column) {
+        const section = document.createElement("section");
+        section.className = "column";
+        const header = document.createElement("header");
+        const heading = document.createElement("h2");
+        heading.textContent = column.label;
+        const meta = document.createElement("p");
+        meta.textContent = column.items.length + " " + (column.items.length === 1 ? "memory" : "memories");
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "add";
+        add.textContent = "Add memory";
+        add.addEventListener("click", () => openComposer(column.label));
+        header.append(heading, meta, add);
+        const list = document.createElement("ul");
+        list.append(...column.items.map(renderCard));
+        section.append(header, list);
+        return section;
+      }
+
+      function originMark(memory) {
+        const mark = memory.addedBy === "make0" ? document.createElement("img") : document.createElement("span");
+        mark.className = memory.addedBy === "make0" ? "mark logo-mark" : "mark " + memory.addedBy;
+        mark.title = LABELS[memory.addedBy] || memory.addedBy;
+        if (memory.addedBy === "make0") {
+          mark.src = "/logo.png";
+          mark.alt = "";
+        } else {
+          mark.textContent = MARKS[memory.addedBy] || "•";
+        }
+        return mark;
+      }
+
+      function previewText(memory) {
+        const text = document.createElement("p");
+        text.textContent = memory.content.length <= 100 ? memory.content : memory.content.slice(0, 100).trimEnd() + "…";
+        return text;
+      }
+
+      function renderCard(memory) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "card" + (memory.id === selectedId ? " selected" : "");
+        button.addEventListener("click", () => openMemory(memory));
+        const body = document.createElement("div");
+        body.className = "card-body";
+        body.append(originMark(memory), previewText(memory));
+        button.append(body);
+        if (memory.edited) {
+          const edited = document.createElement("p");
+          edited.className = "edited";
+          edited.textContent = "Updated by " + writerLabel(memory.updatedBy, memory.writerName) + " " + ago(memory.updatedAt);
+          button.append(edited);
+        }
+        item.append(button);
+        return item;
+      }
+
+      function openComposer(category) {
+        creating = true;
+        selectedId = null;
+        document.getElementById("detail-title").textContent = "New memory";
+        document.getElementById("detail-meta").textContent = "Saving writes version 1.";
+        document.getElementById("edit-category").value = (category || "").trim();
+        document.getElementById("edit-content").value = "";
+        document.getElementById("form-error").textContent = "";
+        document.getElementById("save").hidden = false;
+        document.getElementById("save").textContent = "Add memory";
+        document.getElementById("delete").hidden = true;
+        document.getElementById("show-embedding").hidden = true;
+        document.getElementById("edit-category").disabled = false;
+        document.getElementById("edit-content").disabled = false;
+        document.getElementById("versions").hidden = true;
+        detail.hidden = false;
+        document.getElementById("edit-content").focus();
+        render();
+      }
+
+      async function openMemory(memory) {
+        creating = false;
+        selectedId = memory.id;
+        document.getElementById("detail-title").textContent = memory.category;
+        document.getElementById("detail-meta").textContent = "Added by " + (LABELS[memory.addedBy] || memory.addedBy);
+        document.getElementById("edit-category").value = memory.category;
+        document.getElementById("edit-content").value = memory.content;
+        document.getElementById("edit-category").disabled = false;
+        document.getElementById("edit-content").disabled = false;
+        document.getElementById("form-error").textContent = "";
+        document.getElementById("save").hidden = false;
+        document.getElementById("save").textContent = "Save";
+        document.getElementById("delete").hidden = false;
+        document.getElementById("show-embedding").hidden = false;
+        document.getElementById("versions").hidden = false;
+        detail.hidden = false;
+        render();
+        await loadVersions(memory.id);
+      }
+
+      async function loadVersions(id) {
+        const list = document.getElementById("version-list");
+        list.replaceChildren();
+        const response = await fetch("/api/memories/" + encodeURIComponent(id) + "/versions");
+        const payload = await response.json();
+        if (selectedId !== id) return;
+        for (const version of payload.versions || []) {
+          const row = document.createElement("article");
+          row.className = "version" + (version.isCurrent ? " current" : "");
+          const copy = document.createElement("div");
+          copy.className = "copy";
+          const who = document.createElement("p");
+          who.className = "who";
+          who.textContent = "v" + version.versionNumber + " · " + writerLabel(version.writtenBy, version.writerName) + " · " + ago(version.createdAt);
+          if (version.isCurrent) {
+            const mark = document.createElement("span");
+            mark.className = "current-mark";
+            mark.textContent = "Current";
+            who.append(mark);
+          }
+          const text = document.createElement("p");
+          text.className = "preview";
+          const flat = version.content.replace(/\s+/g, " ").trim();
+          text.textContent = flat.length <= 180 ? version.content : flat.slice(0, 180).trimEnd() + "…";
+          const view = document.createElement("button");
+          view.type = "button";
+          view.className = "text-btn";
+          view.textContent = "View";
+          view.addEventListener("click", () => openVersion(id, version));
+          copy.append(who, text, view);
+          row.append(copy);
+          if (payload.versions.length > 1 && !version.isCurrent) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "make-current";
+            button.textContent = "Make current";
+            button.addEventListener("click", () => void restoreVersion(id, version.versionNumber));
+            row.append(button);
+          }
+          list.append(row);
+        }
+      }
+
+      function openVersion(memoryId, version) {
+        const wrap = document.createElement("div");
+        const meta = document.createElement("p");
+        meta.className = "sync-section";
+        meta.textContent = "v" + version.versionNumber + " · " + writerLabel(version.writtenBy, version.writerName) + " · " + ago(version.createdAt);
+        const embedder = document.createElement("p");
+        embedder.className = "sync-section";
+        embedder.textContent = version.embeddingModel
+          ? "Embedder · " + version.embeddingModel
+          : "Embedder · not recorded for this version";
+        const full = document.createElement("pre");
+        full.className = "version-full";
+        full.textContent = version.content;
+        wrap.append(meta, embedder, full);
+        if (version.isCurrent) {
+          const vector = document.createElement("pre");
+          vector.className = "vector";
+          vector.textContent = "Loading embedding…";
+          wrap.append(vector);
+          void fetch("/api/memories/" + encodeURIComponent(memoryId) + "/embedding")
+            .then((response) => response.json())
+            .then((body) => {
+              if (!body.values) {
+                vector.textContent = body.missing ? "No vector is stored for the current text." : "Couldn’t load the embedding.";
+                return;
+              }
+              if (!version.embeddingModel && body.storedModel) embedder.textContent = "Embedder · " + body.storedModel;
+              vector.textContent = body.values.join(", ");
+            })
+            .catch(() => {
+              vector.textContent = "Couldn’t load the embedding.";
+            });
+        }
+        if (!version.isCurrent) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "make-current";
+          button.textContent = "Make current";
+          button.addEventListener("click", () => {
+            closeModal();
+            void restoreVersion(memoryId, version.versionNumber);
+          });
+          wrap.append(button);
+        }
+        openModal("Version " + version.versionNumber, wrap);
+      }
+
+      async function saveMemory() {
+        const error = document.getElementById("form-error");
+        const button = document.getElementById("save");
+        error.textContent = "";
+        button.disabled = true;
+        const payload = {
+          category: document.getElementById("edit-category").value,
+          content: document.getElementById("edit-content").value,
+        };
+        try {
+          const response = await fetch(creating ? "/api/memories" : "/api/memories/" + encodeURIComponent(selectedId), {
+            method: creating ? "POST" : "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Couldn’t save that memory.");
+          await reload(body.id);
+        } catch (caught) {
+          error.textContent = caught.message;
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function deleteMemory() {
+        if (!selectedId || creating) return;
+        if (!confirm("Delete this memory? It moves to the recycle bin, where you can recover it or delete it permanently.")) return;
+        const error = document.getElementById("form-error");
+        const button = document.getElementById("delete");
+        error.textContent = "";
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/memories/" + encodeURIComponent(selectedId), { method: "DELETE" });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Couldn’t delete that memory.");
+          selectedId = null;
+          creating = false;
+          detail.hidden = true;
+          await reload(null);
+        } catch (caught) {
+          error.textContent = caught.message;
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function restoreVersion(id, versionNumber) {
+        if (!confirm("Make version " + versionNumber + " the current text? Later versions stay in the history.")) return;
+        const response = await fetch("/api/memories/" + encodeURIComponent(id) + "/versions/" + versionNumber + "/restore", { method: "POST" });
+        const body = await response.json();
+        if (!response.ok) {
+          document.getElementById("form-error").textContent = body.error || "Couldn’t restore that version.";
+          return;
+        }
+        await reload(id);
+      }
+
+      function openBin() {
+        const wrap = document.createElement("div");
+        if (archived.length === 0) {
+          const empty = document.createElement("p");
+          empty.textContent = "The recycle bin is empty.";
+          wrap.append(empty);
+          openModal("Recycle bin", wrap);
+          return;
+        }
+        for (const memory of archived) {
+          const row = document.createElement("article");
+          row.className = "bin-row";
+          const heading = document.createElement("h3");
+          heading.textContent = memory.category;
+          const text = document.createElement("p");
+          text.textContent = memory.content;
+          const actions = document.createElement("div");
+          actions.className = "bin-actions";
+          const recover = document.createElement("button");
+          recover.type = "button";
+          recover.className = "save";
+          recover.textContent = "Recover";
+          recover.addEventListener("click", () => void recoverFromBin(memory.id, recover));
+          const purge = document.createElement("button");
+          purge.type = "button";
+          purge.className = "danger";
+          purge.textContent = "Delete permanently";
+          purge.addEventListener("click", () => void purgeFromBin(memory));
+          actions.append(recover, purge);
+          row.append(heading, text, actions);
+          wrap.append(row);
+        }
+        openModal("Recycle bin", wrap);
+      }
+
+      async function recoverFromBin(id, button) {
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/memories/" + encodeURIComponent(id) + "/restore", { method: "POST" });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Couldn’t recover that memory.");
+          await reload(body.id);
+          closeModal();
+        } catch (caught) {
+          button.disabled = false;
+          alert(caught.message);
+        }
+      }
+
+      async function purgeFromBin(memory) {
+        if (!confirm("Delete this memory permanently? Its versions are removed and cannot be recovered.")) return;
+        const response = await fetch("/api/memories/" + encodeURIComponent(memory.id) + "/purge", { method: "POST" });
+        const body = await response.json();
+        if (!response.ok) {
+          alert(body.error || "Couldn’t delete that memory.");
+          return;
+        }
+        await reload(selectedId);
+        openBin();
+      }
+
+      const SYNC_GUIDE = [
+        {
+          id: "connect",
+          title: "Connect your AI apps",
+          detail: "Claude, Cursor, and the other apps on this machine then share ~/.make0/brain.db. Quit each app fully and reopen it after init.",
+          commands: ["npx @make0-ai/brain init"],
+        },
+        {
+          id: "import",
+          title: "Import",
+          detail: "A folder, an Obsidian vault, agent rule files, or text you paste. --extract turns notes into short facts and needs an API key. --dry-run shows the plan first. Refresh this page when the command finishes.",
+          commands: [
+            "npx @make0-ai/brain import ~/Documents/MyVault",
+            "npx @make0-ai/brain import --detect",
+            "pbpaste | npx @make0-ai/brain import -",
+          ],
+        },
+        {
+          id: "export",
+          title: "Export",
+          detail: "Markdown writes one file per memory. The JSON file keeps versions and links. Cloud port (make0-brain login, then make0-brain port) comes later; keep the JSON bundle for that upload.",
+          commands: ["npx @make0-ai/brain export ./my-brain", "npx @make0-ai/brain export --json brain.json"],
+        },
+      ];
+
+      function openSync(focusId) {
+        const wrap = document.createElement("div");
+        for (const section of SYNC_GUIDE) {
+          const block = document.createElement("section");
+          block.className = "sync-section";
+          block.id = "sync-" + section.id;
+          const heading = document.createElement("h3");
+          heading.textContent = section.title;
+          const detail = document.createElement("p");
+          detail.textContent = section.detail;
+          block.append(heading, detail);
+          for (const command of section.commands) {
+            const row = document.createElement("div");
+            row.className = "sync-cmd";
+            const code = document.createElement("code");
+            code.textContent = command;
+            const copy = document.createElement("button");
+            copy.type = "button";
+            copy.textContent = "Copy";
+            copy.addEventListener("click", async () => {
+              try {
+                await navigator.clipboard.writeText(command);
+                copy.textContent = "Copied";
+              } catch {
+                copy.textContent = "Select the command";
+              }
+              setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+            });
+            row.append(code, copy);
+            block.append(row);
+          }
+          wrap.append(block);
+        }
+        openModal("Connect / import / export", wrap);
+        const target = document.getElementById("sync-" + focusId);
+        if (target) target.scrollIntoView({ block: "start" });
+      }
+
+      async function openSettings() {
+        const wrap = document.createElement("div");
+        wrap.textContent = "Loading configuration…";
+        openModal("Brain configuration", wrap);
+        try {
+          const response = await fetch("/api/config");
+          const config = await response.json();
+          if (!response.ok) throw new Error(config.error || "Couldn’t load configuration.");
+          const list = document.createElement("div");
+          list.append(
+            configRow("Embedder", config.embedder.name, config.embedder.model + " · " + config.embedder.dimensions + " dimensions. " + config.embedder.detail),
+            configRow("Reranker", config.reranker.name, config.reranker.model + ". " + config.reranker.detail),
+            configRow("Search", "Hybrid retrieval", config.retrieval),
+            configRow("Language model", config.llm.enabled ? config.llm.model : "Off", config.llm.detail),
+            configRow("Database", "SQLite", config.database),
+          );
+          const how = document.createElement("pre");
+          how.className = "how";
+          how.textContent = config.howToChange;
+          list.append(how);
+          document.getElementById("modal-body").replaceChildren(list);
+        } catch (caught) {
+          wrap.textContent = caught.message;
+        }
+      }
+
+      async function openEmbedding() {
+        if (!selectedId) return;
+        const wrap = document.createElement("div");
+        wrap.textContent = "Embedding this memory…";
+        openModal("Embedding", wrap);
+        try {
+          const response = await fetch("/api/memories/" + encodeURIComponent(selectedId) + "/embedding");
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Couldn’t load the embedding.");
+          const list = document.createElement("div");
+          const status = body.missing
+            ? "The embedder did not return a vector. Open this again to retry."
+            : body.stale
+              ? "Stored with " + body.storedModel + ". The current embedder is " + body.embedder.model + "."
+              : "Stored with " + (body.storedModel || body.embedder.model) + ".";
+          list.append(
+            configRow("Embedder", body.embedder.name, body.embedder.model + " · " + body.embedder.dimensions + " dimensions"),
+            configRow("This memory", body.missing ? "Not embedded yet" : body.dimensions + " numbers", status),
+          );
+          if (body.values) {
+            const vector = document.createElement("pre");
+            vector.className = "vector";
+            vector.textContent = body.values.join(", ");
+            list.append(vector);
+          }
+          document.getElementById("modal-body").replaceChildren(list);
+        } catch (caught) {
+          wrap.textContent = caught.message;
+        }
+      }
+
+      function applyList(payload) {
+        memories = Array.isArray(payload.memories) ? payload.memories : [];
+        archived = Array.isArray(payload.archived) ? payload.archived : [];
+      }
+
+      async function reload(id) {
+        const response = await fetch("/api/memories");
+        const payload = await response.json();
+        applyList(payload);
+        const memory = memories.find((item) => item.id === id) || archived.find((item) => item.id === id);
+        if (memory) await openMemory(memory);
+        else render();
+      }
+
+      function escapeHtml(value) {
+        return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+      }
+
+      fetch("/api/memories")
+        .then((response) => {
+          if (!response.ok) throw new Error("Failed to load memories");
+          return response.json();
+        })
+        .then((payload) => {
+          applyList(payload);
+          document.getElementById("title").textContent = payload.title || "Personal brain";
+          document.title = payload.title || "Personal brain";
+          render();
+        })
+        .catch(() => {
+          board.className = "";
+          board.innerHTML = '<div class="status"><p>Couldn’t load Brain</p></div>';
+        });
+    </script>
+  </body>
+</html>

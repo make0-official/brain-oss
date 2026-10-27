@@ -1,0 +1,307 @@
+# Make0 Brain
+
+**One context for every AI agent you use.** Claude Code, Claude Desktop, Cursor, Codex, Windsurf, VS Code, and Gemini CLI all read and write the same memory, and every change is versioned.
+
+A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server. It runs offline with no API key, keeps everything in one SQLite file, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain.
+
+[Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
+
+```bash
+npx @make0-ai/brain init
+```
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-light.png" alt="The Make0 Brain viewer: memories from Claude, Cursor, ChatGPT, and other agents, grouped by category">
+  </picture>
+</p>
+
+---
+
+## Why
+
+Every agent keeps its own memory. Claude has `CLAUDE.md`, Cursor has rules, Codex has `AGENTS.md`, ChatGPT has its memory page. You end up explaining your stack, your preferences, and last week's decisions again in each one, and the copies drift apart.
+
+Make0 Brain is one memory that all of them share:
+
+- **Tell one agent, every agent knows.** A fact saved from Cursor is found by Claude Code in the next session.
+- **Nothing is overwritten silently.** Every edit, from any agent, is kept as a version with who wrote it and when.
+- **It stays yours.** One SQLite file on your machine, MIT licensed, exportable to plain Markdown.
+
+## Quick start
+
+**1. Connect your agents.**
+
+```bash
+npx @make0-ai/brain init
+```
+
+`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. It shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each app. Restart the apps afterwards.
+
+Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, and VS Code keep rules in settings, so `init` prints the same text for you to paste:
+
+```text
+Make0 Brain is my source of truth for durable memory. Always search it before answering about me, my work, people, preferences, or past decisions. Save lasting facts and decisions to Brain. Never guess or invent memories. Use Brain exclusively for durable memory.
+```
+
+| App            | Where it goes                                            |
+| -------------- | -------------------------------------------------------- |
+| Claude Code    | `~/.claude/CLAUDE.md`, written by `init`                 |
+| Codex CLI      | `~/.codex/AGENTS.md`, written by `init`                  |
+| Gemini CLI     | `~/.gemini/GEMINI.md`, written by `init`                 |
+| Windsurf       | Global rules, written by `init`                          |
+| Cursor         | Settings → Rules → User Rules. Paste it.                 |
+| Claude Desktop | Settings → Profile → personal preferences. Paste it.     |
+| VS Code        | `.github/copilot-instructions.md` in the repo. Paste it. |
+
+Skip the rule with `init --no-rules`.
+
+**2. Bring in the context you already have.**
+
+```bash
+npx @make0-ai/brain import --detect             # CLAUDE.md, AGENTS.md, Cursor/Windsurf/Copilot rules
+npx @make0-ai/brain import ~/Documents/MyVault  # an Obsidian vault or any Markdown folder
+pbpaste | npx @make0-ai/brain import -          # e.g. a memory dump copied from ChatGPT
+```
+
+**3. Look at it.**
+
+```bash
+npx @make0-ai/brain view
+```
+
+The first save or search downloads two small models (~50 MB) to `~/.make0/models`. Data lives in `~/.make0/brain.db`.
+
+## One context across all agents
+
+### Same tools in every app
+
+After `init`, every connected agent gets the same 7 tools:
+
+| Tool                  | What the agent uses it for                                      |
+| --------------------- | --------------------------------------------------------------- |
+| `list_brains`         | Get the brain id. The local server has one brain, `personal`.   |
+| `search_brain`        | Find memories for a focused query before answering.             |
+| `get_memory`          | Read one memory in full.                                        |
+| `get_memory_versions` | Read every saved version of a memory, newest first.             |
+| `add_memory`          | Save a fact or a short Markdown note when you ask it to.        |
+| `update_memory`       | Change a memory. The previous text is kept as a version.        |
+| `delete_memory`       | Archive a memory. Its versions are kept and you can restore it. |
+
+The names and schemas match the hosted Make0 Brain, so a prompt or agent setup works against either one.
+
+### Every memory knows who wrote it
+
+Make0 Brain reads the client name each app sends when it connects and records it as the writer: `claude`, `chatgpt`, or `cursor`. Any other app is recorded as `mcp`, with its own client name kept too. Search results show `addedBy` for each memory, and every version records who wrote it. You can see which agent learned what.
+
+### Context stays consistent
+
+- **Contradictions replace older facts.** If Cursor saves "I don't like dark mode in my editor" after Claude saved "I like dark mode in my editor", the newer memory wins and the older one is archived, with its history intact.
+- **Duplicates merge (with an API key).** An LLM judge compares close matches and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts. Without a key, duplicates are kept rather than guessed at.
+- **Related memories are linked.** Similar memories get links automatically, and search follows them up to two hops, so asking about a project also surfaces the decisions tied to it.
+
+### Your existing agent rules become shared memory
+
+`import --detect` reads the rule files you already wrote for one agent and makes them available to all of them. Make0 Brain's own "search Brain first" block is stripped out so it is never imported as a memory.
+
+## Memory versioning
+
+Every write to a memory creates a version, whether it comes from an agent, an import, or you in the viewer. Nothing is overwritten in place.
+
+### What a version records
+
+| Field                                                     | Meaning                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| `versionNumber`                                           | 1, 2, 3… per memory.                                               |
+| `current`                                                 | The version agents read now. Exactly one per memory.               |
+| `content`, `category`, `kind`, `entityType`, `confidence` | The memory as it was at that point.                                |
+| `writtenBy`                                               | `user`, `make0`, `claude`, `chatgpt`, `cursor`, or `mcp`.          |
+| `writerName`                                              | The app's own client name when `writtenBy` is the generic `mcp`.   |
+| `embeddingModel`                                          | The embedder that indexed the text while this version was current. |
+| `createdAt`                                               | When the version was written.                                      |
+
+A version is written when the content, category, kind, or entity type changes. A confidence-only change does not add one.
+
+### Agents can read the history
+
+Search results include `versionCount`. When it is greater than 1, an agent can call `get_memory_versions` to see how a fact changed and who changed it: for example, that you switched from npm to pnpm last month and which agent recorded it.
+
+### Nothing is lost
+
+| Action                                   | What happens                                           |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `update_memory` or an edit in the viewer | A new current version. Older versions stay.            |
+| A contradicting or merged memory         | The older memory is archived with all its versions.    |
+| `delete_memory`                          | Archived: hidden from search and reads, versions kept. |
+| Re-import of an edited note              | A new version of that memory, not a duplicate.         |
+| Re-import of a note you deleted          | Skipped. Deleted stays deleted.                        |
+| `make0-brain purge <id> --yes`           | The only permanent delete. Agents cannot do it.        |
+
+### Browse and restore
+
+```bash
+npx @make0-ai/brain history <id>               # every version, current one marked *
+npx @make0-ai/brain restore <id> --version 2   # make version 2 current again
+npx @make0-ai/brain restore <id>               # bring back an archived memory
+```
+
+```text
+* v3  2026-10-27T09:14:02.118Z  claude
+    The project uses pnpm and Node 22.
+  v2  2026-10-20T16:40:51.502Z  cursor
+    The project uses pnpm.
+  v1  2026-10-02T11:05:33.910Z  user
+    The project uses npm.
+```
+
+Restoring makes an older version current again and re-indexes it. No version is deleted.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-versions-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-versions-light.png" alt="Version timeline of one memory in the viewer: v3 by Claude is current; v2 by Cursor and v1 by you can be made current again" width="640">
+  </picture>
+</p>
+
+`npx @make0-ai/brain view` opens a local page (on `127.0.0.1` only) where you can browse, search, add, and edit memories, read each memory's version timeline, restore a version, bring back archived memories, inspect the stored embedding, and permanently delete.
+
+## Search quality
+
+Measured on [SWE-ContextBench](https://arxiv.org/abs/2602.08316) Lite, the same comparison as the [Make0 benchmark page](https://make0.ai/benchmarks/swe-contextbench): 300 earlier coding sessions and 99 related issues. The score is how often search returns the gold past session. The local install uses the offline MiniLM embedder and the ms-marco MiniLM reranker, with a mean retrieval time of **0.44s** per query on CPU once the models are loaded.
+
+Rank 1, the gold session is the first result:
+
+```text
+Make0 Brain (cloud)   █████████████████████████████░░░░░░░░░░░  71.7%
+Make0 Brain (local)   █████████████████████████░░░░░░░░░░░░░░░  62.6%  0.44s
+LangMem               ██████████████████████░░░░░░░░░░░░░░░░░░  55.6%
+OpenViking            ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░  38.4%
+Free summary search   ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  34.3%
+Mem0                  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25.3%
+Supermemory           █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23.2%
+```
+
+Overall, the gold session appears anywhere in the results:
+
+```text
+Make0 Brain (cloud)   ██████████████████████████████████████░░  93.9%  top 10
+Make0 Brain (local)   █████████████████████████████████████░░░  92.9%  top 10   0.44s
+LangMem               █████████████████████████████░░░░░░░░░░░  73.3%  top 10
+Supermemory           ████████████████████████░░░░░░░░░░░░░░░░  59.6%  top 15
+OpenViking            █████████████████████░░░░░░░░░░░░░░░░░░░  51.5%  top 3
+Mem0                  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  39.4%  top 3
+Free summary search   ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░  36.4%  agent chooses
+```
+
+LangMem, OpenViking, Mem0, Supermemory, and free summary search are from Table 5 of that paper. "Overall" counts a hit anywhere in each system's own result list; Make0 cloud, Make0 Brain, and LangMem each return 10. On the full benchmark (1,007 past tasks, 357 related issues), hosted Make0 scores 71.4% at rank 1 and 88.2% overall. A stronger embedder and reranker raise accuracy.
+
+How search works: MiniLM embeddings and BM25 keyword scores are blended, a cross-encoder reranks the shortlist (or an LLM filter, with a key), weak results are pruned, and the top results are expanded two hops along memory links.
+
+## Import and export
+
+### Import
+
+- **Folders and vaults.** Each note becomes one memory. Long notes split by heading, and each part keeps the note title. Frontmatter tags or the folder name become the category. Obsidian `[[wikilinks]]` become links between memories. `.obsidian/` and `.trash/` are skipped.
+- **Agent rule files.** `--detect` finds global rules under your home folder and project rules in the current folder.
+- **Re-runs are safe.** Unchanged sections are skipped, edited ones get a new version, and memories you deleted stay deleted.
+- **`--extract`** (needs an API key) turns files into one-fact memories instead of note-sized ones.
+- `--dry-run` shows what would change. Imports over 200 memories ask first; `--yes` skips the question.
+
+### Export
+
+```bash
+npx @make0-ai/brain export ./my-brain          # one Markdown file per memory, opens as an Obsidian vault
+npx @make0-ai/brain export --json brain.json   # every memory, version, and link (the Make0 port format)
+```
+
+The Markdown export imports back in. The JSON bundle includes archived memories and the full version history. It does not include embeddings; whoever reads it re-embeds with their own model.
+
+## Optional API key
+
+Everything works offline. With a key, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`.
+
+Copy `.env.example` to `.env` in this folder, or to `~/.make0/.env` so every app shares one file:
+
+```bash
+cp .env.example ~/.make0/.env
+```
+
+```text
+OPENAI_API_KEY=sk-...            # or OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY
+MAKE0_BRAIN_BASE_URL=            # any OpenAI-compatible endpoint (optional)
+MAKE0_BRAIN_LLM_MODEL=           # default gpt-6-luna
+MAKE0_BRAIN_EMBEDDINGS=api       # API embeddings instead of local MiniLM
+MAKE0_BRAIN_LLM_SEARCH=0         # keep search on the local reranker
+```
+
+Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, default `~/.make0`). A variable already set in the environment, including in an MCP client's `env` block, wins. Switching embedders is safe: memories indexed by another model are re-embedded on the next search.
+
+## Local or cloud
+
+|              | This repo                              | Make0 cloud                                                       |
+| ------------ | -------------------------------------- | ----------------------------------------------------------------- |
+| **Best for** | Local agents, offline, on your machine | Every device and web app, including ChatGPT and Claude on the web |
+| **Setup**    | `npx @make0-ai/brain init`                | Sign in at [make0.ai](https://make0.ai)                           |
+| **API key**  | None required                          | Make0 account                                                     |
+| **Brains**   | One                                    | Personal, project, and custom brains                              |
+| **Storage**  | `~/.make0/brain.db`                    | Hosted                                                            |
+| **Search**   | MiniLM + BM25 + cross-encoder, 0.44s   | Stronger embedder and reranker                                    |
+
+A one-command port from local to Make0 cloud is coming. The `export --json` bundle is the format it will use, with history and attribution included.
+
+## Reference
+
+### CLI
+
+```text
+make0-brain                      Run the MCP server over stdio
+make0-brain init                 Add Make0 Brain to your AI apps (--dry-run, --yes, --clients, --no-rules)
+make0-brain import <path…>       Import files, folders, or a vault (--detect, -, --extract, --dry-run, --yes)
+make0-brain export [dir]         Markdown export (--json [file] for the bundle)
+make0-brain view                 Open the memory viewer in a browser (--port, --no-open)
+make0-brain stats                Show memory and link counts
+make0-brain history <id>         List saved versions of a memory
+make0-brain restore <id>         Restore an archived memory (--version <n> for an older version)
+make0-brain purge <id> --yes     Permanently delete a memory and its versions
+```
+
+`init --clients` takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`.
+
+### Manual setup
+
+If `init` doesn't cover your app, add a stdio server and paste the custom instruction from the quick start into that app's rules:
+
+```json
+{
+  "mcpServers": {
+    "make0-brain": { "command": "npx", "args": ["-y", "@make0-ai/brain"] }
+  }
+}
+```
+
+### Environment
+
+| Variable                                                        | Default                                     | Purpose                                 |
+| --------------------------------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| `MAKE0_BRAIN_HOME`                                              | `~/.make0`                                  | Data folder: database, models, `.env`.  |
+| `MAKE0_BRAIN_DB`                                                | `$MAKE0_BRAIN_HOME/brain.db`                | Database file.                          |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `MAKE0_BRAIN_API_KEY` | unset                                       | Turns on the optional LLM features.     |
+| `MAKE0_BRAIN_BASE_URL`                                          | OpenAI, or OpenRouter for an OpenRouter key | OpenAI-compatible endpoint.             |
+| `MAKE0_BRAIN_LLM_MODEL`                                         | `gpt-6-luna`                                | Chat model.                             |
+| `MAKE0_BRAIN_EMBEDDINGS`                                        | `local`                                     | `local` (MiniLM) or `api`.              |
+| `MAKE0_BRAIN_EMBEDDING_MODEL`                                   | `text-embedding-3-small`                    | Embedding model when `api`.             |
+| `MAKE0_BRAIN_LLM_SEARCH`                                        | on with a key                               | `0` keeps search on the local reranker. |
+
+## Develop
+
+```bash
+npm install
+npm test            # fast suite, no model downloads
+npm run test:models # real local models
+npm run test:e2e    # build, then drive the stdio server
+```
+
+## License
+
+MIT

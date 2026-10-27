@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.db
+*.db-*
+.DS_Store
+coverage/
+PLAN.md
+.env
+.env.local
+.claude/
+.mcp.json
+*.tgz
