@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.make0-official/brain-oss",
+  "title": "Make0 Brain",
+  "description": "One shared, versioned memory for Claude Code, Cursor, Codex and every MCP agent. Local and offline.",
+  "websiteUrl": "https://make0.ai",
+  "repository": {
+    "url": "https://github.com/make0-official/brain-oss",
+    "source": "github",
+    "id": "1435355852"
+  },
+  "version": "0.1.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@make0-ai/brain",
+      "version": "0.1.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MAKE0_BRAIN_HOME",
+          "description": "Data folder for the database, local models and .env (default ~/.make0)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "Optional. Turns on LLM features; Make0 Brain runs fully offline without it",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
