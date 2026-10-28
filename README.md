@@ -11,10 +11,9 @@ npx @make0-ai/brain init
 ```
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-dark.png">
-    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-light.png" alt="The Make0 Brain viewer: memories from Claude, Cursor, ChatGPT, and other agents, grouped by category">
-  </picture>
+  <a href="https://www.youtube.com/watch?v=vcV8i5S1kcM">
+    <img src="docs/images/demo.jpg" alt="Watch the Make0 Brain demo" width="720">
+  </a>
 </p>
 
 ---
@@ -249,7 +248,7 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 |              | This repo                              | Make0 cloud                                                       |
 | ------------ | -------------------------------------- | ----------------------------------------------------------------- |
 | **Best for** | Local agents, offline, on your machine | Every device and web app, including ChatGPT and Claude on the web |
-| **Setup**    | `npx @make0-ai/brain init`                | Sign in at [make0.ai](https://make0.ai)                           |
+| **Setup**    | `npx @make0-ai/brain init`             | Sign in at [make0.ai](https://make0.ai)                           |
 | **API key**  | None required                          | Make0 account                                                     |
 | **Brains**   | One                                    | Personal, project, and custom brains                              |
 | **Storage**  | `~/.make0/brain.db`                    | Hosted                                                            |
