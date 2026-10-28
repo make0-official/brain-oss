@@ -11,8 +11,10 @@ import { loadEnvFiles } from "./env";
 import { writeBundle, writeMarkdownExport } from "./export/export";
 import { runImport, stdinImportFile } from "./import/run";
 import { collectImportFiles, detectAgentFiles, type ImportFile } from "./import/sources";
+import { detectClients } from "./init/clients";
 import { prefetchModels } from "./init/models";
 import { runInit } from "./init/run";
+import { promptForClients } from "./init/select";
 import { resolveLlmConfig } from "./llm/client";
 import { createBrainMcpServer } from "./mcp/server";
 import { BrainStore } from "./store/store";
@@ -24,9 +26,10 @@ const HELP = `Make0 Brain ${version} — one memory for Claude, ChatGPT, Cursor,
 
 Usage:
   make0-brain                      Run the MCP server over stdio
-  make0-brain init                 Add Make0 Brain to Claude Code, Claude Desktop,
-                                   Cursor, Windsurf, VS Code, Codex, Gemini CLI
-      --clients <ids>              Only these (comma-separated)
+  make0-brain init                 Add Make0 Brain to the agents you choose
+                                   (Claude Code, Claude Desktop, Cursor, Windsurf,
+                                   VS Code, Codex, Gemini CLI)
+      --clients <ids>              Skip the prompt; only these (comma-separated)
       --no-rules                   Skip the "search Brain first" rule
       --no-models                  Skip downloading the local models now
       --dry-run, --yes
@@ -96,10 +99,33 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** `--clients` and `--yes` skip the picker. Otherwise ask when more than one agent is installed. */
+async function chooseInitClients(args: string[]): Promise<string[] | undefined> {
+  const flagged = flagValue(args, "--clients")?.split(",").map((id) => id.trim()).filter(Boolean);
+  if (flagged) return flagged;
+  if (args.includes("--yes") || args.includes("-y") || !process.stdin.isTTY) return undefined;
+
+  const detected = detectClients({ home: os.homedir(), platform: process.platform, appData: process.env.APPDATA });
+  if (detected.length < 2) return undefined;
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const picked = await promptForClients(detected, (question) => rl.question(question), (line) => console.log(line));
+    return picked.map((client) => client.id);
+  } finally {
+    rl.close();
+  }
+}
+
 async function init(args: string[]): Promise<void> {
+  const clientIds = await chooseInitClients(args);
+  if (clientIds?.length === 0) {
+    console.log("Nothing changed.");
+    return;
+  }
   await runInit({
     env: { home: os.homedir(), platform: process.platform, appData: process.env.APPDATA },
-    clientIds: flagValue(args, "--clients")?.split(",").map((id) => id.trim()).filter(Boolean),
+    clientIds,
     rules: !args.includes("--no-rules"),
     dryRun: args.includes("--dry-run"),
     confirm: () => confirm("\nApply these changes?", args, true),

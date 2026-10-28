@@ -12,6 +12,7 @@ import {
   stripRulesBlock,
 } from "../src/init/clients";
 import { runInit } from "../src/init/run";
+import { parseClientSelection, promptForClients } from "../src/init/select";
 
 function tempHome(): InitEnv {
   return { home: fs.mkdtempSync(path.join(os.tmpdir(), "make0-init-")), platform: "darwin" };
@@ -147,6 +148,39 @@ test("models still download when no client is found", async () => {
     },
   });
   assert.equal(calls, 1);
+});
+
+test("parseClientSelection accepts numbers, ranges, ids, all, and none", () => {
+  const clients = [client("cursor"), client("codex"), client("gemini")];
+  const ids = (answer: string) => {
+    const picked = parseClientSelection(answer, clients);
+    assert.ok(picked);
+    return picked.map((item) => item.id);
+  };
+  assert.deepEqual(ids(""), ["cursor", "codex", "gemini"]);
+  assert.deepEqual(ids("ALL"), ["cursor", "codex", "gemini"]);
+  assert.deepEqual(ids("1,3"), ["cursor", "gemini"]);
+  assert.deepEqual(ids("1-2"), ["cursor", "codex"]);
+  assert.deepEqual(ids("codex, cursor"), ["codex", "cursor"]);
+  assert.deepEqual(ids("1,1"), ["cursor"]);
+  assert.deepEqual(parseClientSelection("none", clients), []);
+  assert.equal(parseClientSelection("9", clients), null);
+  assert.equal(parseClientSelection("cursor,notepad", clients), null);
+  assert.equal(parseClientSelection("3-1", clients), null);
+});
+
+test("promptForClients repeats until the answer parses", async () => {
+  const clients = [client("cursor"), client("codex"), client("gemini")];
+  const answers = ["nope", "1,gemini"];
+  const log: string[] = [];
+  const picked = await promptForClients(
+    clients,
+    async () => answers.shift() ?? "",
+    (line) => log.push(line),
+  );
+  assert.deepEqual(picked.map((item) => item.id), ["cursor", "gemini"]);
+  assert.ok(log.some((line) => line.includes("1. Cursor")));
+  assert.ok(log.some((line) => line.includes("Use 1-3")));
 });
 
 test("unknown client ids are rejected", async () => {

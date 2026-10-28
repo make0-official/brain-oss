@@ -44,7 +44,7 @@ Make0 Brain is one memory that all of them share:
 npx @make0-ai/brain init
 ```
 
-`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. It shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each app. It then downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
+`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. When more than one is installed, it asks which to configure. Press Enter for all of them, or pass `--clients` to choose up front. `init --yes` configures every detected agent without asking. It then shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each chosen app. It downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
 
 Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, and VS Code keep rules in settings, so `init` prints the same text for you to paste:
 
@@ -273,7 +273,7 @@ make0-brain restore <id>         Restore an archived memory (--version <n> for a
 make0-brain purge <id> --yes     Permanently delete a memory and its versions
 ```
 
-`init --clients` takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`.
+On a terminal, `init` lists the agents it found and asks which to configure. Press Enter for all of them, or enter numbers (`1,3` or `1-3`) or ids. `init --yes` configures every detected agent without asking. `init --clients` skips the prompt and takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`.
 
 ### Manual setup
 
