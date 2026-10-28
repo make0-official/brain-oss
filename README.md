@@ -29,6 +29,13 @@ Make0 Brain is one memory that all of them share:
 - **Nothing is overwritten silently.** Every edit, from any agent, is kept as a version with who wrote it and when.
 - **It stays yours.** One SQLite file on your machine, MIT licensed, exportable to plain Markdown.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/how-it-works-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/how-it-works-light.png" alt="How Make0 Brain works: Cursor saves a memory into one local Brain, versioned with its writer; Claude Code, Codex, Gemini CLI, and Windsurf connect to the same Brain over MCP and find it in their next session">
+  </picture>
+</p>
+
 ## Quick start
 
 **1. Connect your agents.**
