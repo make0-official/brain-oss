@@ -27,8 +27,15 @@ test("buildMemoryList groups live memories and omits embeddings", () => {
   const archived = store.createMemory({ ...base, content: "Old fact", createdAt: "2026-03-01T00:00:00.000Z" });
   store.archiveMemory(archived.id, "make0");
 
+  const [acme, seats] = store.listMemories({});
+  store.upsertEdge({ fromMemoryId: acme.id, toMemoryId: seats.id, relationshipType: "related_to", weight: 0.8 });
+  store.upsertEdge({ fromMemoryId: acme.id, toMemoryId: archived.id, relationshipType: "related_to", weight: 0.9 });
+
   const list = buildMemoryList(store);
   assert.equal(list.title, "Personal brain");
+  assert.equal(list.edges.length, 1);
+  assert.deepEqual(new Set([list.edges[0].fromMemoryId, list.edges[0].toMemoryId]), new Set([acme.id, seats.id]));
+  assert.equal(list.edges[0].weight, 0.8);
   assert.deepEqual(
     list.memories.map((memory) => memory.content),
     ["Works at Acme", "Likes window seats"],
@@ -52,18 +59,36 @@ test("viewer serves the list page and the memory API", async () => {
   if (!address || typeof address === "string") throw new Error("no port");
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
-  const page = await fetch(baseUrl);
-  const html = await page.text();
+  const hub = await fetch(baseUrl);
+  const hubHtml = await hub.text();
+  assert.equal(hub.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.match(hubHtml, /id="root"/);
+  const page = await fetch(`${baseUrl}/brain?brain=personal`);
   assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(await page.text(), hubHtml);
+
+  const script = /src="(\/assets\/[^"]+\.js)"/.exec(hubHtml)?.[1];
+  assert.ok(script, "index.html links the app bundle");
+  const bundle = await fetch(`${baseUrl}${script}`);
+  assert.equal(bundle.headers.get("content-type"), "text/javascript; charset=utf-8");
+  const html = await bundle.text();
+  assert.match(html, /Your brains/);
+  assert.match(html, /New brain/);
+  assert.match(html, /Connected apps/);
+  assert.match(html, /This month/);
+  assert.match(html, /\/brain\?brain=/);
   assert.match(html, /Search memories/);
-  assert.match(html, /Personal brain/);
+  assert.match(html, /All brains/);
   assert.match(html, /Recycle bin/);
   assert.match(html, /Make version/);
   assert.match(html, /Larger writer/);
   assert.match(html, /import --detect/);
-  assert.match(html, /export --json brain.json/);
+  assert.match(html, /export --json brain\.json/);
   assert.match(html, /https:\/\/make0\.ai/);
   assert.match(html, /Use hosted Brain on Make0/);
+  assert.match(html, /Connect ChatGPT and Claude on the web/);
+  assert.match(html, /Memory view/);
+  assert.match(html, /GraphView-[\w-]+\.js/);
   assert.match(html, /Dismiss hosted Brain ad/);
   assert.match(html, /Connect \/ import \/ export/);
   assert.match(html, /Refresh memories/);
@@ -91,6 +116,21 @@ test("viewer serves the list page and the memory API", async () => {
   const createdBody = (await created.json()) as { id: string; content: string };
   assert.equal(created.status, 201);
   assert.equal(createdBody.content, "I prefer aisle seats");
+
+  const usage = (await (await fetch(`${baseUrl}/api/usage?days=7`)).json()) as {
+    days: string[];
+    month: { writes: number; tokensIn: number };
+    clients: Array<{ id: string; name: string; month: { writes: number } }>;
+    brains: Record<string, { month: { writes: number } }>;
+  };
+  assert.equal(usage.days.length, 7);
+  assert.equal(usage.month.writes, 1);
+  assert.ok(usage.month.tokensIn > 0);
+  assert.deepEqual(
+    usage.clients.map((client) => [client.id, client.name, client.month.writes]),
+    [["user", "You", 1]],
+  );
+  assert.equal(usage.brains.personal.month.writes, 1);
 
   const updated = await fetch(`${baseUrl}/api/memories/${createdBody.id}`, {
     method: "PATCH",
@@ -151,6 +191,7 @@ test("viewer serves the list page and the memory API", async () => {
   assert.ok(configBody.embedder.name);
   assert.ok(configBody.reranker.name);
   assert.match(configBody.howToChange, /\.env/);
+  assert.match((configBody as { version?: string }).version ?? "", /^\d+\.\d+\.\d+/);
   assert.equal("apiKey" in configBody, false);
 
   store.updateMemory(createdBody.id, { embedding: [0.25, -0.5], embeddingModel: "test-model" });
@@ -173,6 +214,42 @@ test("viewer serves the list page and the memory API", async () => {
 
   const missing = await fetch(`${baseUrl}/nope`);
   assert.equal(missing.status, 404);
+
+  const createdBrain = await fetch(`${baseUrl}/api/brains`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Work", description: "Client work", agentIds: ["cursor"] }),
+  });
+  const createdBrainBody = (await createdBrain.json()) as { id: string; kind: string; agents: Array<{ id: string }> };
+  assert.equal(createdBrain.status, 201);
+  assert.equal(createdBrainBody.kind, "custom");
+  assert.ok(createdBrainBody.agents.some((agent) => agent.id === "cursor"));
+
+  const workMemory = await fetch(`${baseUrl}/api/memories?brain=${createdBrainBody.id}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content: "Invoice on Friday", category: "Work" }),
+  });
+  assert.equal(workMemory.status, 201);
+  const personalList = (await (await fetch(`${baseUrl}/api/memories?brain=personal`)).json()) as {
+    memories: Array<{ content: string }>;
+  };
+  assert.equal(personalList.memories.some((memory) => memory.content === "Invoice on Friday"), false);
+  const workList = (await (await fetch(`${baseUrl}/api/memories?brain=${createdBrainBody.id}`)).json()) as {
+    title: string;
+    memories: Array<{ content: string }>;
+  };
+  assert.equal(workList.title, "Work");
+  assert.equal(workList.memories[0].content, "Invoice on Friday");
+
+  const granted = await fetch(`${baseUrl}/api/agents/cursor/brains`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ brainIds: [createdBrainBody.id] }),
+  });
+  const grantedBody = (await granted.json()) as { brainIds: string[] };
+  assert.equal(granted.status, 200);
+  assert.deepEqual(grantedBody.brainIds, [createdBrainBody.id]);
 
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   store.close();

@@ -1,16 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Brain } from "../brain";
+import { resolveMcpClientId } from "../init/clients";
 import { MEMORY_CONTENT_MAX_CHARS } from "../shared/limits";
 import {
   MEMORY_ENTITY_TYPES,
   MEMORY_KINDS,
-  PERSONAL_BRAIN_ID,
   type Memory,
   type MemoryOriginProvider,
   type MemoryVersion,
 } from "../shared/types";
+import { estimateTokens, sumTokens } from "../shared/usage";
 import { detectMcpHost, resolveMemoryAddedBy } from "../shared/writer";
+import type { UsageInput } from "../store/store";
 
 // Search settings match the Make0 cloud MCP server.
 const MCP_SEARCH_RETRIEVE_CANDIDATES = 64;
@@ -35,7 +37,7 @@ const memoryContentSchema = z
     `Memory text: one singular fact, or one short Markdown mini-doc (headings, lists, bold, links, code, and Mermaid diagrams in \`\`\`mermaid fences). Keep it under about 800 words. Hard cap ${MEMORY_CONTENT_MAX_CHARS} characters.`,
   );
 
-const brainIdSchema = z.string().min(1).describe('Brain id from list_brains. The local brain is "personal".');
+const brainIdSchema = z.string().min(1).describe('Brain id from list_brains. The personal brain is "personal".');
 
 const READ_TOOL_ANNOTATIONS = {
   readOnlyHint: true,
@@ -68,12 +70,9 @@ function toolError(error: unknown) {
   return jsonResult({ error: "Internal error", code: "internal" }, true);
 }
 
-function requireBrain(brain: string): void {
-  if (brain !== PERSONAL_BRAIN_ID) {
-    throw new BrainToolError(
-      `Brain not found. The local brain is "${PERSONAL_BRAIN_ID}"; multiple brains need Make0 cloud.`,
-      "not_found",
-    );
+function requireGrantedBrain(storeBrainIds: string[], brainId: string): void {
+  if (!storeBrainIds.includes(brainId)) {
+    throw new BrainToolError("Brain not found. Call list_brains for the brains this app can use.", "not_found");
   }
 }
 
@@ -97,7 +96,7 @@ export function serializeMemory(
     versionCount: extras.versionCount ?? 0,
     updatedAt: memory.updatedAt,
     ...(extras.score != null ? { score: extras.score } : {}),
-    brain: PERSONAL_BRAIN_ID,
+    brain: memory.brainId,
   };
 }
 
@@ -137,35 +136,59 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     return { provider: detectMcpHost(name), name: name || null };
   };
 
-  const loadMemory = (memoryId: string, includeArchived = false): Memory => {
+  const clientId = (): string => resolveMcpClientId(client().name);
+
+  server.server.oninitialized = () => {
+    try {
+      brain.store.recordClientSeen(clientId(), client().name);
+    } catch (error) {
+      console.error("Make0 Brain client tracking failed:", error);
+    }
+  };
+
+  const grantedBrainIds = (): string[] => brain.store.brainsVisibleToClient(clientId()).map((item) => item.id);
+
+  const loadMemory = (memoryId: string, brainId: string, includeArchived = false): Memory => {
     const memory = brain.getMemory(memoryId, { includeArchived });
-    if (!memory) throw new BrainToolError("Memory not found in this brain.", "not_found");
+    if (!memory || memory.brainId !== brainId) throw new BrainToolError("Memory not found in this brain.", "not_found");
     return memory;
   };
 
   const versionCount = (memoryId: string): number => brain.countVersions([memoryId]).get(memoryId) ?? 0;
+
+  const recordUsage = (usage: Omit<UsageInput, "clientId">): void => {
+    try {
+      brain.store.recordUsage({ ...usage, clientId: clientId() });
+    } catch (error) {
+      console.error("Make0 Brain usage tracking failed:", error);
+    }
+  };
 
   server.registerTool(
     "list_brains",
     {
       title: "List brains",
       description:
-        "List Make0 brains this connection can use. The local server has one personal brain. Call this first to get the brain id for search_brain. Does not list memories.",
+        "List Make0 brains this connection can use. Call this first to get a brain id for search_brain. Does not list memories.",
       inputSchema: {},
       annotations: READ_TOOL_ANNOTATIONS,
     },
     async () => {
       try {
+        const brains = brain.store.brainsVisibleToClient(clientId()).map((item) => ({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          kind: item.kind,
+          canWrite: true,
+        }));
         return jsonResult({
-          brains: [
-            {
-              id: PERSONAL_BRAIN_ID,
-              name: "Personal brain",
-              description: null,
-              kind: "personal",
-              canWrite: true,
-            },
-          ],
+          brains,
+          ...(brains.length === 0
+            ? {
+                note: `This app has no brains. The user can give it one in the Brain viewer or with: npx @make0-ai/brain agents grant ${clientId()} <brain>`,
+              }
+            : {}),
         });
       } catch (error) {
         return toolError(error);
@@ -196,10 +219,11 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ query, brain: brainId, limit, kind, entityType }) => {
       try {
-        requireBrain(brainId);
+        requireGrantedBrain(grantedBrainIds(), brainId);
         const maxMemories = limit ?? MCP_SEARCH_MAX_RESULTS;
         const hits = await brain.search(query, {
           limit: maxMemories,
+          brainId,
           kind,
           entityType,
           minScore: MCP_SEARCH_MIN_SCORE,
@@ -216,7 +240,8 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
             score: Math.round(hit.score * 1000) / 1000,
           }),
         );
-        return jsonResult({ brain: PERSONAL_BRAIN_ID, query, memories, workspace: [] });
+        recordUsage({ brainId, reads: memories.length, tokensOut: sumTokens(memories.map((memory) => memory.content)) });
+        return jsonResult({ brain: brainId, query, memories, workspace: [] });
       } catch (error) {
         return toolError(error);
       }
@@ -237,8 +262,9 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ memoryId, brain: brainId }) => {
       try {
-        requireBrain(brainId);
-        const memory = loadMemory(memoryId);
+        requireGrantedBrain(grantedBrainIds(), brainId);
+        const memory = loadMemory(memoryId, brainId);
+        recordUsage({ brainId, reads: 1, tokensOut: estimateTokens(memory.content) });
         return jsonResult(serializeMemory(memory, { versionCount: versionCount(memory.id) }));
       } catch (error) {
         return toolError(error);
@@ -260,12 +286,14 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ memoryId, brain: brainId }) => {
       try {
-        requireBrain(brainId);
-        loadMemory(memoryId);
+        requireGrantedBrain(grantedBrainIds(), brainId);
+        loadMemory(memoryId, brainId);
+        const versions = brain.getVersions(memoryId);
+        recordUsage({ brainId, reads: 1, tokensOut: sumTokens(versions.map((version) => version.content)) });
         return jsonResult({
-          brain: PERSONAL_BRAIN_ID,
+          brain: brainId,
           memoryId,
-          versions: brain.getVersions(memoryId).map(serializeMemoryVersion),
+          versions: versions.map(serializeMemoryVersion),
         });
       } catch (error) {
         return toolError(error);
@@ -296,7 +324,7 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ brain: brainId, content, category, kind, entityType, confidence }) => {
       try {
-        requireBrain(brainId);
+        requireGrantedBrain(grantedBrainIds(), brainId);
         const who = client();
         const result = await brain.addMemory({
           content,
@@ -304,12 +332,14 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
           kind,
           entityType,
           confidence,
+          brainId,
           writer: who.provider,
           writerName: who.name,
         });
+        recordUsage({ brainId, writes: 1, tokensIn: estimateTokens(result.memory.content) });
         return jsonResult({
           action: "add",
-          brain: PERSONAL_BRAIN_ID,
+          brain: brainId,
           memory: serializeMemory(result.memory, { versionCount: versionCount(result.memory.id) }),
           connectionsCreated: result.connectionsCreated,
           ...(result.supersededIds.length > 0 ? { replacedMemoryIds: result.supersededIds } : {}),
@@ -344,8 +374,8 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ brain: brainId, memoryId, content, category, kind, entityType, confidence }) => {
       try {
-        requireBrain(brainId);
-        loadMemory(memoryId);
+        requireGrantedBrain(grantedBrainIds(), brainId);
+        loadMemory(memoryId, brainId);
         const updates = Object.fromEntries(
           Object.entries({ content, category, kind, entityType, confidence }).filter(([, value]) => value != null),
         );
@@ -355,9 +385,10 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
         const who = client();
         const memory = await brain.updateMemory(memoryId, updates, who.provider, who.name);
         if (!memory) throw new BrainToolError("Memory not found in this brain.", "not_found");
+        recordUsage({ brainId, writes: 1, tokensIn: content != null ? estimateTokens(memory.content) : 0 });
         return jsonResult({
           action: "update",
-          brain: PERSONAL_BRAIN_ID,
+          brain: brainId,
           memory: serializeMemory(memory, { versionCount: versionCount(memory.id) }),
         });
       } catch (error) {
@@ -385,10 +416,10 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     },
     async ({ brain: brainId, memoryId }) => {
       try {
-        requireBrain(brainId);
-        loadMemory(memoryId, true);
+        requireGrantedBrain(grantedBrainIds(), brainId);
+        loadMemory(memoryId, brainId, true);
         brain.deleteMemory(memoryId, client().provider);
-        return jsonResult({ action: "archive", brain: PERSONAL_BRAIN_ID, memoryId, recoverable: true });
+        return jsonResult({ action: "archive", brain: brainId, memoryId, recoverable: true });
       } catch (error) {
         return toolError(error);
       }

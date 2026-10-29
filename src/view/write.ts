@@ -1,9 +1,10 @@
 import { embeddingMatches } from "../embeddings/reembed";
 import { embedOne, type EmbeddingProvider } from "../embeddings/provider";
 import { MEMORY_CONTENT_MAX_CHARS, memoryDocumentText, normalizeMemoryDocument } from "../shared/limits";
+import { estimateTokens, USER_CLIENT_ID } from "../shared/usage";
 import { mergeMemoryWriterMetadata } from "../shared/writer";
 import type { BrainStore } from "../store/store";
-import type { MemoryAddedBy } from "../shared/types";
+import { PERSONAL_BRAIN_ID, type MemoryAddedBy } from "../shared/types";
 import { resolveMemoryClassification } from "../write/classify";
 import { toViewMemory, type ViewMemory } from "./list";
 
@@ -45,13 +46,20 @@ async function storeViewEmbedding(store: BrainStore, embeddings: EmbeddingProvid
 }
 
 /** A memory saved from the browser. The first version and its embedding are written immediately. */
-export async function createViewMemory(store: BrainStore, body: unknown, embeddings: EmbeddingProvider): Promise<ViewMemory> {
+export async function createViewMemory(
+  store: BrainStore,
+  body: unknown,
+  embeddings: EmbeddingProvider,
+  brainId = PERSONAL_BRAIN_ID,
+): Promise<ViewMemory> {
+  if (!store.getBrain(brainId)) throw new ViewInputError("Brain not found.");
   const fields = readFields(body, { categoryRequired: false });
   const classification = resolveMemoryClassification(fields.content, {
     ...(fields.category ? { category: fields.category } : {}),
   });
   const memory = store.createMemory({
     content: fields.content,
+    brainId,
     ...classification,
     confidence: 100,
     sourceType: "manual",
@@ -60,6 +68,7 @@ export async function createViewMemory(store: BrainStore, body: unknown, embeddi
     originProvider: "make0",
     lastWrittenVia: "make0",
   });
+  store.recordUsage({ clientId: USER_CLIENT_ID, brainId, writes: 1, tokensIn: estimateTokens(memory.content) });
   await storeViewEmbedding(store, embeddings, memory.id);
   return toViewMemory(store.getMemory(memory.id) ?? memory);
 }
@@ -83,6 +92,12 @@ export async function updateViewMemory(
     metadata: mergeMemoryWriterMetadata(existing.metadata, "user"),
   });
   if (!memory) throw new ViewInputError("Memory not found.");
+  store.recordUsage({
+    clientId: USER_CLIENT_ID,
+    brainId: memory.brainId,
+    writes: 1,
+    tokensIn: fields.content !== existing.content ? estimateTokens(memory.content) : 0,
+  });
   await storeViewEmbedding(store, embeddings, memory.id);
   return toViewMemory(store.getMemory(memory.id) ?? memory);
 }

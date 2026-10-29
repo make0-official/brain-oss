@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-canvas: #f1efea;
+  --color-canvas-dark: #080a0e;
+  --color-panel-dark: #161b22;
+  --color-reads: hsl(24 90% 48%);
+  --color-writes: hsl(220 9% 58%);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-slate-800 antialiased dark:bg-canvas-dark dark:text-slate-200;
+}
+
+.board-grid {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.08) 3px, transparent 3px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.08) 3px, transparent 3px),
+    linear-gradient(rgba(15, 23, 42, 0.045) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1.5px, transparent 1.5px);
+  background-size: 75px 75px, 75px 75px, 15px 15px, 15px 15px;
+  background-position: -3px -3px, -3px -3px, -1.5px -1.5px, -1.5px -1.5px;
+  mask-image: radial-gradient(ellipse at center, transparent 38%, #000 100%);
+}
+
+.dark .board-grid {
+  background-image:
+    linear-gradient(rgba(226, 232, 240, 0.055) 3px, transparent 3px),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.055) 3px, transparent 3px),
+    linear-gradient(rgba(226, 232, 240, 0.03) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.03) 1.5px, transparent 1.5px);
+}

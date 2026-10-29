@@ -43,11 +43,59 @@ test("list_brains returns the single personal brain", async () => {
   assert.deepEqual(data.brains.map((brain: { id: string }) => brain.id), ["personal"]);
 });
 
+test("a custom brain stays hidden until it is granted", async () => {
+  const { brain, call } = await connect("cursor");
+  const work = brain.store.createBrain({ name: "Work" });
+  assert.deepEqual(
+    (await call("list_brains")).data.brains.map((item: { id: string }) => item.id),
+    ["personal"],
+  );
+  const denied = await call("add_memory", { brain: work.id, content: "Billing is net 30" });
+  assert.equal(denied.isError, true);
+  assert.equal(denied.data.code, "not_found");
+
+  brain.store.setClientBrains("cursor", ["personal", work.id]);
+  assert.deepEqual(
+    (await call("list_brains")).data.brains.map((item: { id: string }) => item.id),
+    ["personal", work.id],
+  );
+  const added = await call("add_memory", { brain: work.id, content: "Billing is net 30" });
+  assert.equal(added.isError, false);
+  assert.equal(added.data.brain, work.id);
+  const personal = await call("search_brain", { brain: "personal", query: "billing net" });
+  assert.equal(personal.data.memories.length, 0);
+  const found = await call("search_brain", { brain: work.id, query: "billing net" });
+  assert.equal(found.data.memories[0].id, added.data.memory.id);
+
+  brain.store.setClientBrains("cursor", [work.id]);
+  const hidden = await call("search_brain", { brain: "personal", query: "billing" });
+  assert.equal(hidden.data.code, "not_found");
+});
+
 test("other brain ids are not found", async () => {
   const { call } = await connect();
   const result = await call("search_brain", { query: "x", brain: "work" });
   assert.equal(result.isError, true);
   assert.equal(result.data.code, "not_found");
+});
+
+test("tool calls record reads and writes for the calling app", async () => {
+  const { brain, call } = await connect("cursor");
+  const added = await call("add_memory", { brain: "personal", content: "My cat is named Miso" });
+  await call("search_brain", { brain: "personal", query: "cat name" });
+  await call("get_memory", { brain: "personal", memoryId: added.data.memory.id });
+  await call("search_brain", { brain: "work", query: "denied" });
+  assert.deepEqual(
+    brain.store.listSeenClients().map((client) => [client.id, client.name]),
+    [["cursor", "cursor"]],
+  );
+  const rows = brain.store.listUsage("2000-01-01");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].clientId, "cursor");
+  assert.equal(rows[0].brainId, "personal");
+  assert.equal(rows[0].writes, 1);
+  assert.equal(rows[0].reads, 2);
+  assert.ok(rows[0].tokensIn > 0 && rows[0].tokensOut > 0);
 });
 
 test("add, search, update, versions, delete round trip with writer attribution", async () => {

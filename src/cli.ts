@@ -6,6 +6,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { version } from "../package.json";
+import { agentsCommand, brainsCommand, printStats, resolveBrainArg } from "./commands/brains";
 import { brainHome, defaultDbPath, localModelsFor, openBrain } from "./config";
 import { loadEnvFiles } from "./env";
 import { writeBundle, writeMarkdownExport } from "./export/export";
@@ -37,11 +38,20 @@ Usage:
   make0-brain import --detect      Import CLAUDE.md, AGENTS.md, Cursor/Windsurf rules
   make0-brain import -             Import text from stdin
       --extract                    Extract atomic facts with your API key
+      --brain <id>                 Import into this brain (default personal)
       --dry-run, --yes
   make0-brain export [dir]         Markdown files, one per memory (default ./make0-brain-export)
   make0-brain export --json [file] Port bundle (default ./make0-brain-bundle.json)
-  make0-brain view                 Open the memory list in a browser (--port, --no-open)
-  make0-brain stats                Show memory and link counts
+      --brain <id>                 Limit the export to one brain
+  make0-brain brains               List brains
+  make0-brain brains create <name> [--description <text>] [--emoji <emoji>] [--agents <ids>]
+  make0-brain brains edit <id>     [--name <name>] [--description <text>] [--emoji <emoji>]
+  make0-brain brains delete <id> --yes
+  make0-brain agents               Show which brains each app can use
+  make0-brain agents grant <client> <brain…>
+  make0-brain agents revoke <client> <brain…>
+  make0-brain view                 Open the memory list in a browser (--port, --no-open, --brain <id>)
+  make0-brain stats                Show memory and link counts (--brain <id>)
   make0-brain history <id>         List saved versions of a memory
   make0-brain restore <id>         Restore an archived memory
   make0-brain restore <id> --version <n>
@@ -141,7 +151,7 @@ async function init(args: string[]): Promise<void> {
 }
 
 async function importCommand(args: string[]): Promise<void> {
-  const targets = positionals(args);
+  const targets = positionals(args, ["--brain"]);
   const files: ImportFile[] = [];
   if (args.includes("--detect")) {
     const found = detectAgentFiles(os.homedir(), process.cwd());
@@ -165,7 +175,9 @@ async function importCommand(args: string[]): Promise<void> {
 
   const brain = openBrain();
   try {
+    const brainId = resolveBrainArg(brain.store, flagValue(args, "--brain"));
     await runImport(brain, files, {
+      brainId,
       extract,
       dryRun: args.includes("--dry-run"),
       confirm: (summary) => confirm(summary, args),
@@ -206,6 +218,8 @@ async function viewCommand(args: string[]): Promise<void> {
   const port = portArg == null ? 4173 : Number(portArg);
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail("Port must be an integer from 1 to 65535.");
   const store = new BrainStore(defaultDbPath());
+  const openedBrain = flagValue(args, "--brain");
+  const brainId = openedBrain ? resolveBrainArg(store, openedBrain) : undefined;
   let server;
   try {
     server = await startViewer(store, port);
@@ -216,7 +230,7 @@ async function viewCommand(args: string[]): Promise<void> {
     }
     throw error;
   }
-  const url = `http://127.0.0.1:${port}`;
+  const url = brainId ? `http://127.0.0.1:${port}/brain?brain=${encodeURIComponent(brainId)}` : `http://127.0.0.1:${port}`;
   console.log(`Brain list  ${url}`);
   console.log(`Database    ${defaultDbPath()}`);
   console.log("Press Ctrl+C to stop.");
@@ -245,28 +259,37 @@ async function main(argv: string[]): Promise<void> {
   if (command === "init") return init(args);
   if (command === "import") return importCommand(args);
   if (command === "view") return viewCommand(args);
+  if (command === "brains" || command === "agents") {
+    const store = new BrainStore(defaultDbPath());
+    try {
+      if (command === "brains") brainsCommand(store, args);
+      else agentsCommand(store, args);
+    } finally {
+      store.close();
+    }
+    return;
+  }
 
   const brain = openBrain();
   try {
     switch (command) {
       case "export": {
-        const target = positionals(args)[0];
+        const target = positionals(args, ["--brain"])[0];
+        const brainId = flagValue(args, "--brain") ? resolveBrainArg(brain.store, flagValue(args, "--brain")) : undefined;
         if (args.includes("--json")) {
           const file = path.resolve(target ?? "make0-brain-bundle.json");
-          const bundle = writeBundle(brain.store, file);
+          const bundle = writeBundle(brain.store, file, brainId);
           console.log(`Wrote ${bundle.memories.length} memories, ${bundle.versions.length} versions, ${bundle.edges.length} links to ${file}`);
         } else {
           const dir = path.resolve(target ?? "make0-brain-export");
-          const { files } = writeMarkdownExport(brain.store, dir);
+          const { files } = writeMarkdownExport(brain.store, dir, brainId);
           console.log(`Wrote ${files} memories to ${dir}`);
         }
         break;
       }
       case "stats": {
-        const memories = brain.store.listMemories();
         console.log(`Database:  ${defaultDbPath()}`);
-        console.log(`Memories:  ${memories.length} live, ${brain.store.listArchivedMemories().length} archived`);
-        console.log(`Links:     ${brain.store.listEdges().length}`);
+        printStats(brain.store, flagValue(args, "--brain") ? resolveBrainArg(brain.store, flagValue(args, "--brain")) : undefined);
         break;
       }
       case "history": {

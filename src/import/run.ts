@@ -18,6 +18,8 @@ export type ImportOptions = {
   /** Called with the plan when it adds more than IMPORT_CONFIRM_THRESHOLD; false aborts. */
   confirm?: (summary: string) => Promise<boolean>;
   log?: (line: string) => void;
+  /** Defaults to the personal brain. */
+  brainId?: string;
 };
 
 export type ImportSummary = {
@@ -119,8 +121,9 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
   const toAdd: PlannedItem[] = [];
   const toUpdate: PlannedItem[] = [];
   const toReplace: Memory[] = [];
+  const brainId = options.brainId;
   for (const file of files) {
-    const previous = brain.store.listImportedMemories(file.path);
+    const previous = brain.store.listImportedMemories(file.path, brainId);
     const existingByKey = new Map(previous.map((memory) => [memory.metadata.import!.key, memory]));
 
     if (options.extract) {
@@ -182,6 +185,7 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
           writer: "make0",
           isManuallyAdded: false,
           metadata: metadataFor(item),
+          brainId,
         },
         // Notes are documents, not claims: never archive others. Facts get the heuristic only.
         { embedding: embeddings[index], link: false, supersede: options.extract ? "heuristic" : "none" },
@@ -200,19 +204,24 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
     summary.updated += 1;
   }
 
-  summary.links = linkImportedNotes(brain, files, memoryIdsByFile) + brain.relink();
+  summary.links = linkImportedNotes(brain, files, memoryIdsByFile, brainId) + brain.relink(brainId);
   log(`Done: ${summary.added} added, ${summary.updated} updated, ${summary.links} links.`);
   return summary;
 }
 
 /** Sections of one note → part_of edges; Obsidian [[wikilinks]] → references edges. */
-function linkImportedNotes(brain: Brain, files: ImportFile[], touched: Map<string, string[]>): number {
+function linkImportedNotes(
+  brain: Brain,
+  files: ImportFile[],
+  touched: Map<string, string[]>,
+  brainId?: string,
+): number {
   if (touched.size === 0) return 0;
   const firstIdByFile = new Map<string, string>();
   const idsByFile = new Map<string, string[]>();
   for (const file of files) {
     const ids = brain.store
-      .listImportedMemories(file.path)
+      .listImportedMemories(file.path, brainId)
       .filter((memory) => !memory.deletedAt)
       .map((memory) => memory.id);
     if (ids.length === 0) continue;

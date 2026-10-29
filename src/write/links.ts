@@ -27,10 +27,11 @@ export function pruneWeakMemoryLinks(
   store: BrainStore,
   memories: Memory[],
   minSimilarity = MEMORY_LINK_VECTOR_MIN_SIMILARITY,
+  brainId?: string,
 ): number {
   const byId = new Map(memories.map((memory) => [memory.id, memory]));
   let deleted = 0;
-  for (const edge of store.listEdges()) {
+  for (const edge of store.listEdges(brainId)) {
     if (edge.relationshipType !== "related_to") continue;
     const from = byId.get(edge.fromMemoryId);
     const to = byId.get(edge.toMemoryId);
@@ -49,13 +50,14 @@ export function pruneWeakMemoryLinks(
  */
 export function ensureMemoryGraphLinks(
   store: BrainStore,
-  minSimilarity = MEMORY_LINK_VECTOR_MIN_SIMILARITY,
+  options: { brainId?: string; minSimilarity?: number } = {},
 ): number {
-  const nodes = store.listMemories().filter(hasEmbedding);
-  pruneWeakMemoryLinks(store, nodes, minSimilarity);
+  const minSimilarity = options.minSimilarity ?? MEMORY_LINK_VECTOR_MIN_SIMILARITY;
+  const nodes = store.listMemories({ brainId: options.brainId }).filter(hasEmbedding);
+  pruneWeakMemoryLinks(store, nodes, minSimilarity, options.brainId);
   if (nodes.length < 2) return 0;
 
-  const edges = store.listEdges();
+  const edges = store.listEdges(options.brainId);
   const existingKeys = new Set(
     edges.map((edge) => edgeKey(edge.fromMemoryId, edge.toMemoryId, edge.relationshipType)),
   );

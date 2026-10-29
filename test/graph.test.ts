@@ -6,6 +6,7 @@ import type { Memory, MemoryEdge } from "../src/shared/types";
 function memory(id: string): Memory {
   return {
     id,
+    brainId: "personal",
     content: id,
     category: "Topics",
     kind: "work",

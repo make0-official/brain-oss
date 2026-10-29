@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
 
 /**
- * Mirrors cloud `user_memories`, `user_memory_versions`, `memory_edges`
- * minus user/project/brain scoping, so port is a straight column copy.
- * Each entry runs once, in order; `PRAGMA user_version` tracks progress.
+ * Mirrors cloud `user_memories`, `user_memory_versions`, `memory_edges`,
+ * plus a local `brains` table. `memories.brain_id` is appended so older
+ * binaries still read rows they already know. Each entry runs once, in
+ * order; `PRAGMA user_version` tracks progress.
  */
 const MIGRATIONS: string[] = [
   `
@@ -71,6 +72,68 @@ const MIGRATIONS: string[] = [
   WHERE is_current = 1 AND embedding_model IS NULL;
   `,
   `ALTER TABLE memory_versions ADD COLUMN writer_name TEXT;`,
+  `
+  CREATE TABLE brains (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    emoji TEXT,
+    description TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('personal', 'custom')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  INSERT INTO brains (id, name, emoji, description, kind, created_at, updated_at)
+  VALUES (
+    'personal',
+    'Personal brain',
+    NULL,
+    NULL,
+    'personal',
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  );
+
+  -- SQLite cannot ADD a REFERENCES column that is NOT NULL with a default.
+  ALTER TABLE memories ADD COLUMN brain_id TEXT NOT NULL DEFAULT 'personal';
+  CREATE INDEX memories_brain_id_idx ON memories (brain_id);
+
+  CREATE TABLE agent_grants (
+    client_id TEXT NOT NULL,
+    brain_id TEXT NOT NULL REFERENCES brains (id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (client_id, brain_id)
+  );
+  `,
+  `
+  CREATE TABLE usage_daily (
+    client_id TEXT NOT NULL,
+    brain_id TEXT NOT NULL REFERENCES brains (id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    reads INTEGER NOT NULL DEFAULT 0,
+    writes INTEGER NOT NULL DEFAULT 0,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (client_id, brain_id, day)
+  );
+  CREATE INDEX usage_daily_day_idx ON usage_daily (day);
+  `,
+  `
+  CREATE TABLE mcp_clients (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+  );
+  `,
+  `
+  -- A row means the client's grants were set on purpose, so no grants means no brains.
+  CREATE TABLE agent_access (
+    client_id TEXT PRIMARY KEY,
+    updated_at TEXT NOT NULL
+  );
+  INSERT INTO agent_access (client_id, updated_at)
+    SELECT client_id, MAX(created_at) FROM agent_grants GROUP BY client_id;
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

@@ -1,6 +1,6 @@
 import { resolveMemoryAddedBy, resolveMemoryWrittenBy } from "../shared/writer";
 import type { BrainStore } from "../store/store";
-import type { Memory, MemoryAddedBy } from "../shared/types";
+import { PERSONAL_BRAIN_ID, PERSONAL_BRAIN_NAME, type BrainKind, type Memory, type MemoryAddedBy, type MemoryEdge } from "../shared/types";
 
 const EDIT_THRESHOLD_MS = 2000;
 
@@ -20,10 +20,17 @@ export type ViewMemory = {
 };
 
 export type ViewList = {
+  brainId: string;
   title: string;
+  kind: BrainKind;
+  description: string | null;
+  emoji: string | null;
   memories: ViewMemory[];
   archived: ViewMemory[];
+  edges: ViewEdge[];
 };
+
+export type ViewEdge = Pick<MemoryEdge, "id" | "fromMemoryId" | "toMemoryId" | "relationshipType" | "weight">;
 
 function wasEdited(memory: Memory): boolean {
   const lastUpdatedBy = memory.metadata?.lastUpdatedBy;
@@ -53,10 +60,22 @@ export function toViewMemory(memory: Memory): ViewMemory {
 }
 
 /** Live memories, plus archived ones the page can recover. Embeddings stay in the database. */
-export function buildMemoryList(store: BrainStore): ViewList {
+export function buildMemoryList(store: BrainStore, brainId = PERSONAL_BRAIN_ID): ViewList {
+  const brain = store.getBrain(brainId);
   return {
-    title: "Personal brain",
-    memories: store.listMemories().map(toViewMemory),
-    archived: store.listArchivedMemories().map(toViewMemory),
+    brainId,
+    title: brain?.name ?? PERSONAL_BRAIN_NAME,
+    kind: brain?.kind ?? "personal",
+    description: brain?.description ?? null,
+    emoji: brain?.emoji ?? null,
+    memories: store.listMemories({ brainId }).map(toViewMemory),
+    archived: store.listArchivedMemories(brainId).map(toViewMemory),
+    edges: store.listEdges(brainId).map(({ id, fromMemoryId, toMemoryId, relationshipType, weight }) => ({
+      id,
+      fromMemoryId,
+      toMemoryId,
+      relationshipType,
+      weight,
+    })),
   };
 }

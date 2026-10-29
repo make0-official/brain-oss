@@ -5,13 +5,14 @@ import { expandMemoryContextSubgraph, MEMORY_CONTEXT_NEIGHBOR_HOPS, trimMemoryCo
 import type { MemoryContextEntry } from "./search/graph";
 import { rankMemoriesForQuery } from "./search/rank";
 import { memoryDocumentText, normalizeMemoryDocument } from "./shared/limits";
-import type {
-  Memory,
-  MemoryEntityType,
-  MemoryKind,
-  MemoryMetadata,
-  MemoryOriginProvider,
-  MemoryVersion,
+import {
+  PERSONAL_BRAIN_ID,
+  type Memory,
+  type MemoryEntityType,
+  type MemoryKind,
+  type MemoryMetadata,
+  type MemoryOriginProvider,
+  type MemoryVersion,
 } from "./shared/types";
 import { mergeMemoryWriterMetadata } from "./shared/writer";
 import type { BrainStore, MemoryUpdates } from "./store/store";
@@ -34,6 +35,8 @@ export type AddMemoryInput = {
   metadata?: MemoryMetadata;
   /** False for Make0-side writes such as imports. Default true (user or MCP client asked). */
   isManuallyAdded?: boolean;
+  /** Defaults to the personal brain. */
+  brainId?: string;
 };
 
 export type AddMemoryOptions = {
@@ -63,6 +66,8 @@ export type SearchOptions = {
   minConfidence?: number;
   candidateCap?: number;
   neighborHops?: number;
+  /** Defaults to the personal brain. */
+  brainId?: string;
 };
 
 export type SearchHit = MemoryContextEntry;
@@ -72,8 +77,8 @@ function isActiveMemory(memory: Memory): boolean {
 }
 
 /**
- * The single local brain: write pipeline (classify → insert + version →
- * supersede → link) and hybrid search with graph expansion.
+ * Write pipeline (classify → insert + version → supersede → link) and hybrid
+ * search with graph expansion. Each call stays inside one brain.
  */
 export class Brain {
   readonly store: BrainStore;
@@ -106,9 +111,10 @@ export class Brain {
     }
   }
 
-  /** Recompute vector links for the whole brain. */
-  relink(): number {
-    return ensureMemoryGraphLinks(this.store);
+  /** Recompute vector links. One brain, or every brain when `brainId` is omitted. */
+  relink(brainId?: string): number {
+    const ids = brainId ? [brainId] : this.store.listBrains().map((brain) => brain.id);
+    return ids.reduce((sum, id) => sum + ensureMemoryGraphLinks(this.store, { brainId: id }), 0);
   }
 
   private async embedMemory(memory: Pick<Memory, "category" | "content" | "kind" | "entityType">) {
@@ -142,11 +148,13 @@ export class Brain {
 
   async addMemory(input: AddMemoryInput, options: AddMemoryOptions = {}): Promise<AddMemoryResult> {
     const content = normalizeMemoryDocument(input.content);
+    const brainId = input.brainId ?? PERSONAL_BRAIN_ID;
     const classification = await this.classify(content, input);
     const embedded =
       options.embedding !== undefined ? options.embedding : await this.embedMemory({ ...classification, content });
     const memory = this.store.createMemory({
       content,
+      brainId,
       ...classification,
       confidence: input.confidence ?? 100,
       sourceType: "manual",
@@ -163,7 +171,7 @@ export class Brain {
     const { archiveIds, mergedContent } =
       supersede === "none"
         ? { archiveIds: [] as string[], mergedContent: undefined }
-        : await resolveSupersession(memory, this.store.listMemories(), {
+        : await resolveSupersession(memory, this.store.listMemories({ brainId }), {
             pairScorer: this.pairScorer,
             judge: supersede === "full" ? this.llm.judge : undefined,
           });
@@ -181,7 +189,7 @@ export class Brain {
       });
     }
 
-    const connectionsCreated = options.link === false ? 0 : ensureMemoryGraphLinks(this.store);
+    const connectionsCreated = options.link === false ? 0 : ensureMemoryGraphLinks(this.store, { brainId });
     return { memory: this.store.getMemory(memory.id) ?? memory, connectionsCreated, supersededIds: archiveIds };
   }
 
@@ -211,7 +219,7 @@ export class Brain {
       next.embeddingModel = embedded?.embeddingModel ?? null;
     }
     const memory = this.store.updateMemory(id, next);
-    if (memory && textChanged) ensureMemoryGraphLinks(this.store);
+    if (memory && textChanged) ensureMemoryGraphLinks(this.store, { brainId: memory.brainId });
     return memory;
   }
 
@@ -227,8 +235,8 @@ export class Brain {
     const restored = this.store.restoreVersion(id, versionNumber);
     if (!restored) return undefined;
     const embedded = await this.embedMemory(restored);
-    const memory = embedded ? this.store.updateMemory(id, embedded, { recordVersion: false }) : restored;
-    ensureMemoryGraphLinks(this.store);
+    const memory = (embedded ? this.store.updateMemory(id, embedded, { recordVersion: false }) : restored) ?? restored;
+    ensureMemoryGraphLinks(this.store, { brainId: memory.brainId });
     return memory;
   }
 
@@ -260,8 +268,9 @@ export class Brain {
     const minScore = options.minScore ?? 0.15;
     const relativeRatio = options.relativeRatio ?? 0.5;
     const neighborHops = options.neighborHops ?? MEMORY_CONTEXT_NEIGHBOR_HOPS;
+    const brainId = options.brainId ?? PERSONAL_BRAIN_ID;
     const active = this.store
-      .listMemories()
+      .listMemories({ brainId })
       .filter(
         (memory) =>
           isActiveMemory(memory) &&
@@ -296,7 +305,7 @@ export class Brain {
     if (ranked.length === 0) return [];
 
     const memoryById = new Map(active.map((memory) => [memory.id, memory]));
-    const edges = this.store.listEdges();
+    const edges = this.store.listEdges(brainId);
     const entries: MemoryContextEntry[] =
       edges.length > 0 && neighborHops > 0
         ? expandMemoryContextSubgraph({

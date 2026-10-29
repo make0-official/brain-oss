@@ -2,19 +2,33 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import type {
-  Memory,
-  MemoryEdge,
-  MemoryEntityType,
-  MemoryKind,
-  MemoryMetadata,
-  MemoryOriginProvider,
-  MemoryRelationshipType,
-  MemorySourceType,
-  MemoryVersion,
+import { findBrain, normalizeBrainDescription, normalizeBrainEmoji, normalizeBrainName } from "../shared/brains";
+import {
+  PERSONAL_BRAIN_ID,
+  type AgentGrant,
+  type BrainKind,
+  type Memory,
+  type MemoryEdge,
+  type MemoryEntityType,
+  type MemoryKind,
+  type MemoryMetadata,
+  type MemoryOriginProvider,
+  type MemoryRelationshipType,
+  type MemorySourceType,
+  type MemoryVersion,
+  type UserBrain,
 } from "../shared/types";
 import { memoryVersionFieldsChanged, normalizeWriterName, resolveMemoryWrittenBy } from "../shared/writer";
 import { migrate } from "./schema";
+
+export class BrainStoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: "not_found" | "invalid" | "in_use" | "protected",
+  ) {
+    super(message);
+  }
+}
 
 export type NewMemory = {
   content: string;
@@ -33,6 +47,8 @@ export type NewMemory = {
   writerName?: string | null;
   /** Override timestamps (import, tests). Defaults to now. */
   createdAt?: string;
+  /** Defaults to the personal brain. */
+  brainId?: string;
 };
 
 export type MemoryUpdates = Partial<
@@ -55,6 +71,7 @@ export type MemoryUpdates = Partial<
 
 type MemoryRow = {
   id: string;
+  brain_id: string;
   content: string;
   category: string;
   kind: MemoryKind;
@@ -87,6 +104,22 @@ type VersionRow = {
   writer_name: string | null;
   is_current: number;
   embedding_model: string | null;
+  created_at: string;
+};
+
+type BrainRow = {
+  id: string;
+  name: string;
+  emoji: string | null;
+  description: string | null;
+  kind: BrainKind;
+  created_at: string;
+  updated_at: string;
+};
+
+type GrantRow = {
+  client_id: string;
+  brain_id: string;
   created_at: string;
 };
 
@@ -125,9 +158,26 @@ function clampConfidence(value: unknown, fallback = 75): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function rowToBrain(row: BrainRow): UserBrain {
+  return {
+    id: row.id,
+    name: row.name,
+    emoji: row.emoji,
+    description: row.description,
+    kind: row.kind,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToGrant(row: GrantRow): AgentGrant {
+  return { clientId: row.client_id, brainId: row.brain_id, createdAt: row.created_at };
+}
+
 function rowToMemory(row: MemoryRow): Memory {
   return {
     id: row.id,
+    brainId: row.brain_id,
     content: row.content,
     category: row.category,
     kind: row.kind,
@@ -184,7 +234,7 @@ export function sortedEdgeEndpoints(a: string, b: string): [string, string] {
 }
 
 /**
- * Synchronous SQLite store for the single local brain.
+ * Synchronous SQLite store for every local brain.
  * Every content change writes a version; deletes archive.
  */
 export class BrainStore {
@@ -216,21 +266,24 @@ export class BrainStore {
     const id = randomUUID();
     const timestamp = input.createdAt ?? this.now();
     const originProvider = input.originProvider ?? "make0";
+    const brainId = input.brainId ?? PERSONAL_BRAIN_ID;
+    if (!this.getBrain(brainId)) throw new BrainStoreError(`Brain not found: ${brainId}`, "not_found");
     this.db.transaction(() => {
       this.db
         .prepare(
           `INSERT INTO memories (
             id, content, category, kind, entity_type, confidence, source_type, is_manually_added,
             metadata, embedding, embedding_model, origin_provider, last_written_via,
-            discovered_at, created_at, updated_at
+            discovered_at, created_at, updated_at, brain_id
           ) VALUES (
             @id, @content, @category, @kind, @entityType, @confidence, @sourceType, @isManuallyAdded,
             @metadata, @embedding, @embeddingModel, @originProvider, @lastWrittenVia,
-            @timestamp, @timestamp, @timestamp
+            @timestamp, @timestamp, @timestamp, @brainId
           )`,
         )
         .run({
           id,
+          brainId,
           content: input.content,
           category: input.category,
           kind: input.kind,
@@ -267,37 +320,57 @@ export class BrainStore {
     return memory;
   }
 
-  /** Live memories, newest first. */
-  listMemories(options: { includeArchived?: boolean } = {}): Memory[] {
-    const rows = this.db
-      .prepare(
-        options.includeArchived
-          ? "SELECT * FROM memories ORDER BY created_at DESC"
-          : "SELECT * FROM memories WHERE deleted_at IS NULL ORDER BY created_at DESC",
-      )
-      .all() as MemoryRow[];
+  /** Live memories, newest first. `brainId` limits the list to one brain. */
+  listMemories(options: { includeArchived?: boolean; brainId?: string } = {}): Memory[] {
+    const where: string[] = [];
+    const params: string[] = [];
+    if (!options.includeArchived) where.push("deleted_at IS NULL");
+    if (options.brainId) {
+      where.push("brain_id = ?");
+      params.push(options.brainId);
+    }
+    const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const rows = this.db.prepare(`SELECT * FROM memories ${clause} ORDER BY created_at DESC`).all(...params) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
-  listArchivedMemories(): Memory[] {
-    const rows = this.db
-      .prepare("SELECT * FROM memories WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC")
-      .all() as MemoryRow[];
+  listArchivedMemories(brainId?: string): Memory[] {
+    const rows = (
+      brainId
+        ? this.db
+            .prepare("SELECT * FROM memories WHERE deleted_at IS NOT NULL AND brain_id = ? ORDER BY deleted_at DESC")
+            .all(brainId)
+        : this.db.prepare("SELECT * FROM memories WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").all()
+    ) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
   /** Memories imported from one source path, archived included (so re-import skips them). */
-  listImportedMemories(sourcePath: string): Memory[] {
-    const rows = this.db
-      .prepare("SELECT * FROM memories WHERE json_extract(metadata, '$.import.path') = ? ORDER BY created_at")
-      .all(sourcePath) as MemoryRow[];
+  listImportedMemories(sourcePath: string, brainId?: string): Memory[] {
+    const rows = (
+      brainId
+        ? this.db
+            .prepare(
+              "SELECT * FROM memories WHERE json_extract(metadata, '$.import.path') = ? AND brain_id = ? ORDER BY created_at",
+            )
+            .all(sourcePath, brainId)
+        : this.db
+            .prepare("SELECT * FROM memories WHERE json_extract(metadata, '$.import.path') = ? ORDER BY created_at")
+            .all(sourcePath)
+    ) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
-  countMemories(): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) AS count FROM memories WHERE deleted_at IS NULL")
-      .get() as { count: number };
+  countMemories(options: { brainId?: string; includeArchived?: boolean } = {}): number {
+    const where: string[] = [];
+    const params: string[] = [];
+    if (!options.includeArchived) where.push("deleted_at IS NULL");
+    if (options.brainId) {
+      where.push("brain_id = ?");
+      params.push(options.brainId);
+    }
+    const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const row = this.db.prepare(`SELECT COUNT(*) AS count FROM memories ${clause}`).get(...params) as { count: number };
     return row.count;
   }
 
@@ -459,15 +532,16 @@ export class BrainStore {
 
   // --- edges ---
 
-  /** Edges whose endpoints are both live. */
-  listEdges(): MemoryEdge[] {
+  /** Edges whose endpoints are both live. `brainId` keeps edges inside that brain. */
+  listEdges(brainId?: string): MemoryEdge[] {
     const rows = this.db
       .prepare(
         `SELECT e.* FROM memory_edges e
          JOIN memories a ON a.id = e.from_memory_id AND a.deleted_at IS NULL
-         JOIN memories b ON b.id = e.to_memory_id AND b.deleted_at IS NULL`,
+         JOIN memories b ON b.id = e.to_memory_id AND b.deleted_at IS NULL
+         WHERE (? IS NULL OR (a.brain_id = ? AND b.brain_id = ?))`,
       )
-      .all() as EdgeRow[];
+      .all(brainId ?? null, brainId ?? null, brainId ?? null) as EdgeRow[];
     return rows.map(rowToEdge);
   }
 
@@ -507,4 +581,260 @@ export class BrainStore {
       .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
       .run(key, value);
   }
+
+  // --- brains ---
+
+  listBrains(): UserBrain[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM brains
+         ORDER BY CASE kind WHEN 'personal' THEN 0 ELSE 1 END, created_at ASC, name ASC`,
+      )
+      .all() as BrainRow[];
+    return rows.map(rowToBrain);
+  }
+
+  getBrain(id: string): UserBrain | undefined {
+    const row = this.db.prepare("SELECT * FROM brains WHERE id = ?").get(id) as BrainRow | undefined;
+    return row ? rowToBrain(row) : undefined;
+  }
+
+  /** Id, or the only brain with that name. */
+  resolveBrain(ref: string): UserBrain | undefined {
+    return findBrain(this, ref);
+  }
+
+  createBrain(input: { name: string; emoji?: string | null; description?: string | null }): UserBrain {
+    const name = normalizeBrainName(input.name);
+    if (!name) throw new BrainStoreError("Brain name is required.", "invalid");
+    const id = randomUUID();
+    const timestamp = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO brains (id, name, emoji, description, kind, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'custom', ?, ?)`,
+      )
+      .run(id, name, normalizeBrainEmoji(input.emoji), normalizeBrainDescription(input.description), timestamp, timestamp);
+    return this.requireBrain(id);
+  }
+
+  updateBrain(
+    id: string,
+    updates: { name?: string; emoji?: string | null; description?: string | null },
+  ): UserBrain {
+    const existing = this.getBrain(id);
+    if (!existing) throw new BrainStoreError("Brain not found.", "not_found");
+    if (existing.kind === "personal" && (updates.name !== undefined || updates.emoji !== undefined)) {
+      throw new BrainStoreError("The personal brain name cannot be changed.", "protected");
+    }
+    const name = updates.name !== undefined ? normalizeBrainName(updates.name) : existing.name;
+    if (!name) throw new BrainStoreError("Brain name is required.", "invalid");
+    const emoji = updates.emoji !== undefined ? normalizeBrainEmoji(updates.emoji) : existing.emoji;
+    const description =
+      updates.description !== undefined ? normalizeBrainDescription(updates.description) : existing.description;
+    this.db
+      .prepare("UPDATE brains SET name = ?, emoji = ?, description = ?, updated_at = ? WHERE id = ?")
+      .run(name, emoji, description, this.now(), id);
+    return this.requireBrain(id);
+  }
+
+  /** Custom brains only, and only when they hold no memories. */
+  deleteBrain(id: string): void {
+    const existing = this.getBrain(id);
+    if (!existing) throw new BrainStoreError("Brain not found.", "not_found");
+    if (existing.kind === "personal") throw new BrainStoreError("The personal brain cannot be deleted.", "protected");
+    const count = this.countMemories({ brainId: id, includeArchived: true });
+    if (count > 0) {
+      throw new BrainStoreError(
+        `This brain still has ${count} ${count === 1 ? "memory" : "memories"}. Purge them before deleting the brain.`,
+        "in_use",
+      );
+    }
+    this.db.prepare("DELETE FROM brains WHERE id = ?").run(id);
+  }
+
+  private requireBrain(id: string): UserBrain {
+    const brain = this.getBrain(id);
+    if (!brain) throw new BrainStoreError("Brain not found.", "not_found");
+    return brain;
+  }
+
+  // --- agent grants ---
+
+  listAgentGrants(): AgentGrant[] {
+    const rows = this.db
+      .prepare("SELECT client_id, brain_id, created_at FROM agent_grants ORDER BY client_id, brain_id")
+      .all() as GrantRow[];
+    return rows.map(rowToGrant);
+  }
+
+  /** Explicit grant rows. Empty can mean "never configured" or "no brains"; see `isClientConfigured`. */
+  grantBrainIds(clientId: string): string[] {
+    const rows = this.db
+      .prepare("SELECT brain_id FROM agent_grants WHERE client_id = ? ORDER BY brain_id")
+      .all(clientId) as Array<{ brain_id: string }>;
+    return rows.map((row) => row.brain_id);
+  }
+
+  /** True once the client's access was set. Unconfigured clients see the personal brain only. */
+  isClientConfigured(clientId: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM agent_access WHERE client_id = ?").get(clientId));
+  }
+
+  /** Clients whose access was set, including those left with no brains. */
+  listConfiguredClientIds(): string[] {
+    const rows = this.db.prepare("SELECT client_id FROM agent_access ORDER BY client_id").all() as Array<{ client_id: string }>;
+    return rows.map((row) => row.client_id);
+  }
+
+  /** Brains this MCP client may use: personal when never configured, otherwise its grants, possibly none. */
+  brainsVisibleToClient(clientId: string): UserBrain[] {
+    if (!this.isClientConfigured(clientId)) {
+      return this.listBrains().filter((brain) => brain.id === PERSONAL_BRAIN_ID);
+    }
+    const granted = new Set(this.grantBrainIds(clientId));
+    return this.listBrains().filter((brain) => granted.has(brain.id));
+  }
+
+  /**
+   * Clients that can use this brain. Unconfigured clients can use personal,
+   * so pass the known client ids to include that implicit access.
+   */
+  clientIdsForBrain(brainId: string, knownClientIds: string[] = []): string[] {
+    const explicit = this.listAgentGrants()
+      .filter((grant) => grant.brainId === brainId)
+      .map((grant) => grant.clientId);
+    if (brainId !== PERSONAL_BRAIN_ID) return explicit;
+    const configured = new Set(this.listConfiguredClientIds());
+    const implicit = knownClientIds.filter((id) => !configured.has(id));
+    return [...new Set([...implicit, ...explicit])];
+  }
+
+  /** Replace one client's grants. An empty list leaves the client with no brains. */
+  setClientBrains(clientId: string, brainIds: string[]): void {
+    const ids = [...new Set(brainIds.map((id) => id.trim()).filter(Boolean))];
+    if (!clientId.trim()) throw new BrainStoreError("Agent id is required.", "invalid");
+    for (const id of ids) {
+      if (!this.getBrain(id)) throw new BrainStoreError(`Brain not found: ${id}`, "not_found");
+    }
+    const timestamp = this.now();
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM agent_grants WHERE client_id = ?").run(clientId);
+      const insert = this.db.prepare(
+        "INSERT INTO agent_grants (client_id, brain_id, created_at) VALUES (?, ?, ?)",
+      );
+      for (const id of ids) insert.run(clientId, id, timestamp);
+      this.db
+        .prepare(
+          `INSERT INTO agent_access (client_id, updated_at) VALUES (?, ?)
+           ON CONFLICT (client_id) DO UPDATE SET updated_at = excluded.updated_at`,
+        )
+        .run(clientId, timestamp);
+    })();
+  }
+
+  /** Add one brain to a client, on top of what it can already see. */
+  grantClientBrain(clientId: string, brainId: string): void {
+    if (!this.getBrain(brainId)) throw new BrainStoreError(`Brain not found: ${brainId}`, "not_found");
+    const current = this.brainsVisibleToClient(clientId).map((brain) => brain.id);
+    if (current.includes(brainId) && this.isClientConfigured(clientId)) return;
+    this.setClientBrains(clientId, [...new Set([...current, brainId])]);
+  }
+
+  /** Remove one brain from a client. Removing the last one leaves it with no brains. */
+  revokeClientBrain(clientId: string, brainId: string): void {
+    const current = this.brainsVisibleToClient(clientId).map((brain) => brain.id);
+    this.setClientBrains(
+      clientId,
+      current.filter((id) => id !== brainId),
+    );
+  }
+
+  // --- MCP clients ---
+
+  /** Remembers an app that connected over MCP, so the viewer can list it by id. */
+  recordClientSeen(id: string, name: string | null): void {
+    const timestamp = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO mcp_clients (id, name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET name = COALESCE(excluded.name, name), last_seen_at = excluded.last_seen_at`,
+      )
+      .run(id, name, timestamp, timestamp);
+  }
+
+  listSeenClients(): SeenClient[] {
+    const rows = this.db
+      .prepare("SELECT id, name, first_seen_at, last_seen_at FROM mcp_clients ORDER BY last_seen_at DESC")
+      .all() as Array<{ id: string; name: string | null; first_seen_at: string; last_seen_at: string }>;
+    return rows.map((row) => ({ id: row.id, name: row.name, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at }));
+  }
+
+  // --- usage ---
+
+  /** Adds to today's UTC counters for one client and brain. */
+  recordUsage(input: UsageInput): void {
+    const amounts = [input.reads, input.writes, input.tokensIn, input.tokensOut].map((value) =>
+      Math.max(0, Math.floor(value ?? 0)),
+    );
+    if (amounts.every((value) => value === 0) || !this.getBrain(input.brainId)) return;
+    this.db
+      .prepare(
+        `INSERT INTO usage_daily (client_id, brain_id, day, reads, writes, tokens_in, tokens_out)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (client_id, brain_id, day) DO UPDATE SET
+           reads = reads + excluded.reads,
+           writes = writes + excluded.writes,
+           tokens_in = tokens_in + excluded.tokens_in,
+           tokens_out = tokens_out + excluded.tokens_out`,
+      )
+      .run(input.clientId, input.brainId, this.now().slice(0, 10), ...amounts);
+  }
+
+  /** Daily rows from `since` (YYYY-MM-DD, inclusive). */
+  listUsage(since: string): UsageRow[] {
+    const rows = this.db
+      .prepare(
+        "SELECT client_id, brain_id, day, reads, writes, tokens_in, tokens_out FROM usage_daily WHERE day >= ? ORDER BY day, client_id, brain_id",
+      )
+      .all(since) as Array<{
+      client_id: string;
+      brain_id: string;
+      day: string;
+      reads: number;
+      writes: number;
+      tokens_in: number;
+      tokens_out: number;
+    }>;
+    return rows.map((row) => ({
+      clientId: row.client_id,
+      brainId: row.brain_id,
+      day: row.day,
+      reads: row.reads,
+      writes: row.writes,
+      tokensIn: row.tokens_in,
+      tokensOut: row.tokens_out,
+    }));
+  }
 }
+
+export type SeenClient = { id: string; name: string | null; firstSeenAt: string; lastSeenAt: string };
+
+export type UsageInput = {
+  clientId: string;
+  brainId: string;
+  reads?: number;
+  writes?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+};
+
+export type UsageRow = {
+  clientId: string;
+  brainId: string;
+  day: string;
+  reads: number;
+  writes: number;
+  tokensIn: number;
+  tokensOut: number;
+};

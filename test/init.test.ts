@@ -9,6 +9,7 @@ import {
   MCP_CLIENTS,
   planConfigChange,
   planRulesChange,
+  resolveMcpClientId,
   stripRulesBlock,
 } from "../src/init/clients";
 import { runInit } from "../src/init/run";
@@ -181,6 +182,13 @@ test("promptForClients repeats until the answer parses", async () => {
   assert.deepEqual(picked.map((item) => item.id), ["cursor", "gemini"]);
   assert.ok(log.some((line) => line.includes("1. Cursor")));
   assert.ok(log.some((line) => line.includes("Use 1-3")));
+});
+
+test("mcp client names map onto init client ids", () => {
+  assert.equal(resolveMcpClientId("cursor-vscode"), "cursor");
+  assert.equal(resolveMcpClientId("Claude Code"), "claude-code");
+  assert.equal(resolveMcpClientId("my custom agent"), "my-custom-agent");
+  assert.equal(resolveMcpClientId(""), "mcp");
 });
 
 test("unknown client ids are rejected", async () => {

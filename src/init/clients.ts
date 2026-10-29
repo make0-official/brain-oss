@@ -110,6 +110,40 @@ export function detectClients(env: InitEnv, clients = MCP_CLIENTS): McpClient[] 
   return clients.filter((client) => fs.existsSync(client.detectPath(env)));
 }
 
+/** True when this app's MCP config already names the Make0 Brain server. */
+export function clientConfigIncludesServer(client: McpClient, env: InitEnv): boolean {
+  const file = client.configPath(env);
+  if (!fs.existsSync(file)) return false;
+  return fs.readFileSync(file, "utf8").includes(SERVER_NAME);
+}
+
+const CLIENT_ID_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
+  { id: "claude-code", pattern: /claude-code|claude code/ },
+  { id: "claude-desktop", pattern: /claude-desktop|claude desktop/ },
+  { id: "windsurf", pattern: /windsurf|codeium/ },
+  { id: "gemini", pattern: /\bgemini\b/ },
+  { id: "codex", pattern: /\bcodex\b/ },
+  { id: "cursor", pattern: /\bcursor\b/ },
+  { id: "vscode", pattern: /vscode|visual studio code|\bcopilot\b/ },
+];
+
+/**
+ * Map an MCP `clientInfo` name onto an init client id.
+ * Unknown apps get a slug of their own name so grants stay per app.
+ */
+export function resolveMcpClientId(clientName?: string | null): string {
+  const haystack = (clientName ?? "").toLowerCase().trim();
+  if (!haystack) return "mcp";
+  for (const candidate of CLIENT_ID_PATTERNS) {
+    if (candidate.pattern.test(haystack)) return candidate.id;
+  }
+  const slug = haystack
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || "mcp";
+}
+
 function readJsonObject(file: string): Record<string, unknown> {
   if (!fs.existsSync(file)) return {};
   const raw = fs.readFileSync(file, "utf8").trim();

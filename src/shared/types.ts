@@ -1,5 +1,29 @@
-/** The only brain id in OSS. Multiple brains are a Make0 cloud feature. */
+/** Default brain. Always present; custom brains are extra rows in the same database. */
 export const PERSONAL_BRAIN_ID = "personal";
+export const PERSONAL_BRAIN_NAME = "Personal brain";
+
+export const BRAIN_NAME_MAX_LENGTH = 80;
+export const BRAIN_DESCRIPTION_MAX_LENGTH = 80;
+export const BRAIN_EMOJI_MAX_LENGTH = 16;
+
+export const BRAIN_KINDS = ["personal", "custom"] as const;
+export type BrainKind = (typeof BRAIN_KINDS)[number];
+
+export type UserBrain = {
+  id: string;
+  name: string;
+  emoji: string | null;
+  description: string | null;
+  kind: BrainKind;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentGrant = {
+  clientId: string;
+  brainId: string;
+  createdAt: string;
+};
 
 export const MEMORY_KINDS = ["work", "profile"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
@@ -47,6 +71,7 @@ export type MemoryMetadata = {
 
 export type Memory = {
   id: string;
+  brainId: string;
   content: string;
   category: string;
   kind: MemoryKind;

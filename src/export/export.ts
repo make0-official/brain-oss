@@ -20,9 +20,9 @@ export type BrainBundle = {
   edges: Array<Pick<MemoryEdge, "fromMemoryId" | "toMemoryId" | "relationshipType" | "weight">>;
 };
 
-/** Every memory, archived included, so history survives a port. */
-export function buildBundle(store: BrainStore, now = new Date()): BrainBundle {
-  const memories = store.listMemories({ includeArchived: true });
+/** Every memory, archived included, so history survives a port. `brainId` limits the bundle to one brain. */
+export function buildBundle(store: BrainStore, now = new Date(), brainId?: string): BrainBundle {
+  const memories = store.listMemories({ includeArchived: true, brainId });
   const ids = new Set(memories.map((memory) => memory.id));
   const edges = store.db
     .prepare("SELECT from_memory_id, to_memory_id, relationship_type, weight FROM memory_edges")
@@ -49,8 +49,8 @@ export function buildBundle(store: BrainStore, now = new Date()): BrainBundle {
   };
 }
 
-export function writeBundle(store: BrainStore, file: string): BrainBundle {
-  const bundle = buildBundle(store);
+export function writeBundle(store: BrainStore, file: string, brainId?: string): BrainBundle {
+  const bundle = buildBundle(store, new Date(), brainId);
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(bundle, null, 2)}\n`);
   return bundle;
@@ -76,6 +76,7 @@ function memoryMarkdown(memory: Memory, versionCount: number): string {
   const frontmatter = [
     "---",
     `id: ${memory.id}`,
+    `brainId: ${memory.brainId}`,
     `category: ${yamlString(memory.category)}`,
     `kind: ${memory.kind}`,
     `entityType: ${memory.entityType}`,
@@ -91,12 +92,8 @@ function memoryMarkdown(memory: Memory, versionCount: number): string {
   return `${frontmatter.join("\n")}\n\n${memory.content}\n`;
 }
 
-/**
- * One Markdown file per live memory, in category folders, with frontmatter.
- * Opens as an Obsidian vault; `make0-brain import` reads it back.
- */
-export function writeMarkdownExport(store: BrainStore, dir: string): { files: number } {
-  const memories = store.listMemories();
+function writeMarkdownBrain(store: BrainStore, dir: string, brainId?: string): { files: number } {
+  const memories = store.listMemories(brainId ? { brainId } : {});
   const counts = store.countVersions(memories.map((memory) => memory.id));
   fs.mkdirSync(dir, { recursive: true });
   const index: string[] = ["# Make0 Brain export", "", `${memories.length} memories, exported ${new Date().toISOString()}.`, ""];
@@ -113,4 +110,25 @@ export function writeMarkdownExport(store: BrainStore, dir: string): { files: nu
   }
   fs.writeFileSync(path.join(dir, "README.md"), `${index.join("\n")}\n`);
   return { files: memories.length };
+}
+
+/**
+ * One Markdown file per live memory, in category folders, with frontmatter.
+ * Opens as an Obsidian vault; `make0-brain import` reads it back.
+ * Exporting every brain writes one subdirectory per brain.
+ */
+export function writeMarkdownExport(store: BrainStore, dir: string, brainId?: string): { files: number } {
+  const brains = brainId ? store.listBrains().filter((brain) => brain.id === brainId) : store.listBrains();
+  if (brains.length <= 1) return writeMarkdownBrain(store, dir, brains[0]?.id ?? brainId);
+  fs.mkdirSync(dir, { recursive: true });
+  let files = 0;
+  const index = ["# Make0 Brain export", ""];
+  for (const brain of brains) {
+    const folder = brain.id === "personal" ? "personal" : `${slugify(brain.name, 32)}-${brain.id.slice(0, 8)}`;
+    const written = writeMarkdownBrain(store, path.join(dir, folder), brain.id);
+    files += written.files;
+    index.push(`- [${brain.name}](${folder}/README.md) — ${written.files} memories`);
+  }
+  fs.writeFileSync(path.join(dir, "README.md"), `${index.join("\n")}\n`);
+  return { files };
 }

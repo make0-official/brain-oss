@@ -1,6 +1,6 @@
 {
   "name": "@make0-ai/brain",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "One shared, versioned memory for Claude Code, Cursor, Codex, and every MCP agent. Local-first, offline, MIT.",
   "author": "Make0 (https://make0.ai)",
   "mcpName": "io.github.make0-official/brain-oss",
@@ -21,14 +21,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:web && tsup",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "test:models": "MAKE0_BRAIN_LOCAL_MODELS=1 vitest run test/local-models.test.ts",
     "test:e2e": "npm run build && MAKE0_BRAIN_E2E=1 vitest run test/stdio.test.ts",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "build:web": "vite build --config web/vite.config.ts",
+    "dev:web": "vite --config web/vite.config.ts"
   },
   "keywords": [
     "mcp",
@@ -65,11 +67,22 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-force-graph-3d": "^1.29.2",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.184.0",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
+    "vite": "^7.3.7",
     "vitest": "^5.0.5"
   },
   "allowScripts": {

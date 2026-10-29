@@ -30,6 +30,7 @@ test("bundle has archived memories, all versions, edges, and no embeddings", asy
   assert.deepEqual(versions.map((version) => [version.versionNumber, version.writtenBy]), [[1, "claude"], [2, "cursor"]]);
   assert.equal(bundle.edges.length, 1);
   assert.equal(bundle.memories.find((memory) => memory.id === a.memory.id)?.originProvider, "claude");
+  assert.ok(bundle.memories.every((memory) => memory.brainId === "personal"));
 });
 
 test("markdown export writes live memories with frontmatter and re-imports", async () => {

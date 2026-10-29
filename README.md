@@ -77,6 +77,15 @@ pbpaste | npx @make0-ai/brain import -          # e.g. a memory dump copied from
 npx @make0-ai/brain view
 ```
 
+The viewer opens on `127.0.0.1` with every brain, how many memories each holds, and what your apps retrieved and added this week.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-brains-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-brains-light.png" alt="The Make0 Brain viewer home: four brains (Personal, Acme Checkout, Trailhead, Reading notes) with memory counts and the apps that use each, next to totals, a 7-day activity chart, and the connected apps">
+  </picture>
+</p>
+
 Models live in `~/.make0/models` and data in `~/.make0/brain.db`. If you skip `init` (or pass `--no-models`), the first save or search downloads the models instead.
 
 ## One context across all agents
@@ -87,7 +96,7 @@ After `init`, every connected agent gets the same 7 tools:
 
 | Tool                  | What the agent uses it for                                      |
 | --------------------- | --------------------------------------------------------------- |
-| `list_brains`         | Get the brain id. The local server has one brain, `personal`.   |
+| `list_brains`         | Get the brain ids this app can use. `personal` is always there until you allocate others. |
 | `search_brain`        | Find memories for a focused query before answering.             |
 | `get_memory`          | Read one memory in full.                                        |
 | `get_memory_versions` | Read every saved version of a memory, newest first.             |
@@ -97,15 +106,60 @@ After `init`, every connected agent gets the same 7 tools:
 
 The names and schemas match the hosted Make0 Brain, so a prompt or agent setup works against either one.
 
+### More than one brain
+
+The personal brain is created with the database and cannot be deleted. Add others when a project should not share those memories:
+
+```bash
+npx @make0-ai/brain brains create "Work" --description "Client work" --agents cursor,claude-code
+npx @make0-ai/brain brains                 # list brains
+npx @make0-ai/brain agents                 # which app can use which brain
+npx @make0-ai/brain import ~/Notes --brain Work
+npx @make0-ai/brain view --brain Work
+```
+
+An app with no allocation sees only `personal`. `agents grant` and `agents revoke` change that, and so does the Connect dialog in `view`. Revoking every brain leaves the app with none: `list_brains` comes back empty until you grant one again. The viewer and the CLI can open every brain. Agents only see brains you give them, and `list_brains` is how they learn the id to pass to the other tools.
+
+Open a brain to see its memories as a board, one column per category, with the app that wrote each one.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-board-light.png" alt="The Acme Checkout brain as a board: Payments, Decisions, Environments, and People columns, each memory marked with the app that wrote it">
+  </picture>
+</p>
+
+Upgrading from an older Make0 Brain does not need a new `init`. The next time an app starts the server, npm picks up the new package and the existing `~/.make0/brain.db` migrates in place. Your memories stay on the personal brain. If `npx @make0-ai/brain --version` is still `0.1.x`, a global install is shadowing npx: `npm install -g @make0-ai/brain@0.2.0`.
+
 ### Every memory knows who wrote it
 
 Make0 Brain reads the client name each app sends when it connects and records it as the writer: `claude`, `chatgpt`, or `cursor`. Any other app is recorded as `mcp`, with its own client name kept too. Search results show `addedBy` for each memory, and every version records who wrote it. You can see which agent learned what.
+
+### See what each app reads and writes
+
+Every memory an app retrieves or writes is counted per app and per brain, with a rough token count. The home page shows this week at a glance; **Details** opens the full chart, filterable by brain, range, and app, in memories, tokens, or average tokens per call. The counters stay in the local database.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-activity-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-activity-light.png" alt="Brain activity for the last 7 days: 1,320 memories retrieved and 110 added, a daily chart, and a breakdown by Claude Code, Cursor, Codex CLI, Claude Desktop, and Gemini CLI">
+  </picture>
+</p>
 
 ### Context stays consistent
 
 - **Contradictions replace older facts.** If Cursor saves "I don't like dark mode in my editor" after Claude saved "I like dark mode in my editor", the newer memory wins and the older one is archived, with its history intact.
 - **Duplicates merge (with an API key).** An LLM judge compares close matches and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts. Without a key, duplicates are kept rather than guessed at.
 - **Related memories are linked.** Similar memories get links automatically, and search follows them up to two hops, so asking about a project also surfaces the decisions tied to it.
+
+Switch a brain to **3D** to orbit and zoom through it: categories branch from the center, and each memory sits on its category.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-graph-dark.png">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-graph-light.png" alt="3D view of the personal brain: 35 memories grouped into categories such as Tooling, Coding style, Infrastructure, Security, and About me">
+  </picture>
+</p>
 
 ### Your existing agent rules become shared memory
 
@@ -166,11 +220,11 @@ Restoring makes an older version current again and re-indexes it. No version is 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-versions-dark.png">
-    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-versions-light.png" alt="Version timeline of one memory in the viewer: v3 by Claude is current; v2 by Cursor and v1 by you can be made current again" width="640">
+    <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-versions-light.png" alt="A memory open in the viewer: its text can be edited, and its version timeline shows v3 by Claude as current, with v2 by Cursor and v1 by Claude available to make current again">
   </picture>
 </p>
 
-`npx @make0-ai/brain view` opens a local page (on `127.0.0.1` only) where you can browse, search, add, and edit memories, read each memory's version timeline, restore a version, bring back archived memories, inspect the stored embedding, and permanently delete.
+`npx @make0-ai/brain view` opens a local page (on `127.0.0.1` only) where you can create and switch brains, browse memories as a board or in 3D, search, add, and edit them, read each memory's version timeline, restore a version, bring back archived memories, inspect the stored embedding, and permanently delete.
 
 ## Search quality
 
@@ -250,7 +304,7 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | **Best for** | Local agents, offline, on your machine | Every device and web app, including ChatGPT and Claude on the web |
 | **Setup**    | `npx @make0-ai/brain init`             | Sign in at [make0.ai](https://make0.ai)                           |
 | **API key**  | None required                          | Make0 account                                                     |
-| **Brains**   | One                                    | Personal, project, and custom brains                              |
+| **Brains**   | Personal and custom                    | Personal, project, and custom brains                              |
 | **Storage**  | `~/.make0/brain.db`                    | Hosted                                                            |
 | **Search**   | MiniLM + BM25 + cross-encoder, 0.44s   | Stronger embedder and reranker                                    |
 
@@ -263,10 +317,12 @@ A one-command port from local to Make0 cloud is coming. The `export --json` bund
 ```text
 make0-brain                      Run the MCP server over stdio
 make0-brain init                 Add Make0 Brain to your AI apps and download the models (--dry-run, --yes, --clients, --no-rules, --no-models)
-make0-brain import <path…>       Import files, folders, or a vault (--detect, -, --extract, --dry-run, --yes)
-make0-brain export [dir]         Markdown export (--json [file] for the bundle)
-make0-brain view                 Open the memory viewer in a browser (--port, --no-open)
-make0-brain stats                Show memory and link counts
+make0-brain import <path…>       Import files, folders, or a vault (--detect, -, --extract, --brain, --dry-run, --yes)
+make0-brain export [dir]         Markdown export (--json [file] for the bundle, --brain to limit it)
+make0-brain brains               List, create, edit, or delete brains
+make0-brain agents               Show or change which brains each app can use
+make0-brain view                 Open the memory viewer in a browser (--port, --no-open, --brain)
+make0-brain stats                Show memory and link counts (--brain)
 make0-brain history <id>         List saved versions of a memory
 make0-brain restore <id>         Restore an archived memory (--version <n> for an older version)
 make0-brain purge <id> --yes     Permanently delete a memory and its versions
@@ -306,6 +362,14 @@ npm install
 npm test            # fast suite, no model downloads
 npm run test:models # real local models
 npm run test:e2e    # build, then drive the stdio server
+```
+
+The viewer UI is a React app in `web/`, built into `dist/web` and served by `make0-brain view`.
+
+```bash
+npm run build:web                                   # once, so `npm run dev -- view` has a UI
+MAKE0_BRAIN_DB=/tmp/try.db npm run dev -- view --no-open
+npm run dev:web                                     # hot reload at http://localhost:5173, API proxied to :4173
 ```
 
 ## License

@@ -7,8 +7,19 @@ import { createEmbeddingProvider } from "../config";
 import { reembedMismatched } from "../embeddings/reembed";
 import type { EmbeddingProvider } from "../embeddings/provider";
 import type { BrainStore } from "../store/store";
+import {
+  createViewBrain,
+  deleteViewBrain,
+  listViewAgents,
+  listViewBrains,
+  requestedBrainId,
+  setViewAgentBrains,
+  updateViewBrain,
+} from "./brains";
+import { version } from "../../package.json";
 import { describeViewConfig } from "./config";
 import { buildMemoryList } from "./list";
+import { buildViewUsage } from "./usage";
 import {
   createViewMemory,
   deleteViewMemory,
@@ -21,16 +32,46 @@ import {
   ViewInputError,
 } from "./write";
 
-const assetDir = path.dirname(fileURLToPath(import.meta.url));
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
-function readAsset(name: string): Buffer {
-  const file = path.join(assetDir, name);
-  if (!fs.existsSync(file)) throw new Error(`Missing viewer file: ${file}`);
-  return fs.readFileSync(file);
+/** `dist/web` next to the bundled CLI, or the repo build when running from `src/view`. */
+function resolveWebDir(): string | null {
+  const candidates = [path.join(moduleDir, "web"), path.resolve(moduleDir, "../../dist/web")];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, "index.html"))) ?? null;
 }
 
-const page = readAsset("page.html");
-const logo = readAsset("logo.png");
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".json": "application/json; charset=utf-8",
+  ".woff2": "font/woff2",
+};
+
+const PAGE_ROUTES = new Set(["/", "/index.html", "/brain"]);
+
+function serveWeb(pathname: string, response: ServerResponse): boolean {
+  const webDir = resolveWebDir();
+  if (!webDir) {
+    if (!PAGE_ROUTES.has(pathname)) return false;
+    response.writeHead(503, { "content-type": "text/html; charset=utf-8" });
+    response.end("<p>The viewer UI is not built. Run <code>npm run build:web</code>.</p>");
+    return true;
+  }
+  const relative = PAGE_ROUTES.has(pathname) ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+  const file = path.resolve(webDir, relative);
+  if (!file.startsWith(webDir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+  const html = file.endsWith(".html");
+  response.writeHead(200, {
+    "content-type": CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
+    "cache-control": html ? "no-store" : relative.startsWith("assets/") ? "public, max-age=31536000, immutable" : "public, max-age=86400",
+  });
+  response.end(fs.readFileSync(file));
+  return true;
+}
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -60,6 +101,9 @@ async function handle(
   response: ServerResponse,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  const brainId = requestedBrainId(url.searchParams.get("brain"));
+  const brainMatch = /^\/api\/brains\/([^/]+)$/.exec(url.pathname);
+  const agentBrainsMatch = /^\/api\/agents\/([^/]+)\/brains$/.exec(url.pathname);
   const memoryMatch = /^\/api\/memories\/([^/]+)$/.exec(url.pathname);
   const versionMatch = /^\/api\/memories\/([^/]+)\/versions$/.exec(url.pathname);
   const restoreMatch = /^\/api\/memories\/([^/]+)\/versions\/(\d+)\/restore$/.exec(url.pathname);
@@ -68,15 +112,45 @@ async function handle(
   const purgeMatch = /^\/api\/memories\/([^/]+)\/purge$/.exec(url.pathname);
 
   if (request.method === "GET" && url.pathname === "/api/config") {
-    sendJson(response, 200, describeViewConfig());
+    sendJson(response, 200, { ...describeViewConfig(), version });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/brains") {
+    sendJson(response, 200, { brains: listViewBrains(store) });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/brains") {
+    sendJson(response, 201, createViewBrain(store, await readJson(request)));
+    return;
+  }
+  if (request.method === "PATCH" && brainMatch) {
+    sendJson(response, 200, updateViewBrain(store, decodeURIComponent(brainMatch[1]), await readJson(request)));
+    return;
+  }
+  if (request.method === "DELETE" && brainMatch) {
+    deleteViewBrain(store, decodeURIComponent(brainMatch[1]));
+    sendJson(response, 200, { deleted: true });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/usage") {
+    sendJson(response, 200, buildViewUsage(store, Number(url.searchParams.get("days") ?? 31) || 31));
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/agents") {
+    sendJson(response, 200, listViewAgents(store));
+    return;
+  }
+  if (request.method === "PUT" && agentBrainsMatch) {
+    sendJson(response, 200, setViewAgentBrains(store, agentBrainsMatch[1], await readJson(request)));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/memories") {
-    sendJson(response, 200, buildMemoryList(store));
+    if (!store.getBrain(brainId)) throw new ViewInputError("Brain not found.");
+    sendJson(response, 200, buildMemoryList(store, brainId));
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/memories") {
-    sendJson(response, 201, await createViewMemory(store, await readJson(request), embeddings));
+    sendJson(response, 201, await createViewMemory(store, await readJson(request), embeddings, brainId));
     return;
   }
   if (request.method === "PATCH" && memoryMatch) {
@@ -127,16 +201,7 @@ async function handle(
     );
     return;
   }
-  if (request.method === "GET" && url.pathname === "/logo.png") {
-    response.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
-    response.end(logo);
-    return;
-  }
-  if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-    response.end(page);
-    return;
-  }
+  if (request.method === "GET" && !url.pathname.startsWith("/api/") && serveWeb(url.pathname, response)) return;
   response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
   response.end("Not found");
 }
