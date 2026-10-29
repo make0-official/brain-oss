@@ -11,7 +11,7 @@ npx @make0-ai/brain init
 ```
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=vcV8i5S1kcM">
+  <a href="https://www.youtube.com/watch?v=YXV0Hje9BvE">
     <img src="docs/images/demo.jpg" alt="Watch the Make0 Brain demo" width="720">
   </a>
 </p>
