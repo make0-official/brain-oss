@@ -2,7 +2,7 @@
 
 **One context for every AI agent you use.** Claude Code, Claude Desktop, Cursor, Codex, Windsurf, VS Code, and Gemini CLI all read and write the same memory, and every change is versioned.
 
-A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server. It runs offline with no API key, keeps everything in one SQLite file, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain.
+A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server. After a one-time model download it runs offline with no API key, keeps everything in one SQLite file on your machine, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain.
 
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
 
@@ -87,6 +87,16 @@ The viewer opens on `127.0.0.1` with every brain, how many memories each holds, 
 </p>
 
 Models live in `~/.make0/models` and data in `~/.make0/brain.db`. If you skip `init` (or pass `--no-models`), the first save or search downloads the models instead.
+
+### Verify it works
+
+Restart the apps you connected, then check that a memory written by one agent reaches another:
+
+1. **Save from one agent.** In Cursor (or any connected app), say: *"Remember that my test fruit is mango."* It should call `add_memory`.
+2. **Find it from another.** In a new Claude Code session (or any other connected app), ask: *"What is my test fruit?"* It should call `search_brain` and answer "mango" without being told.
+3. **Check who wrote it.** Run `npx @make0-ai/brain view`, open the personal brain, and click the memory. It shows **Added by Cursor** and a version timeline.
+
+Delete the test memory in the viewer when you are done. If step 1 or 2 doesn't call a Brain tool, the app is missing the custom instruction above (Cursor, Claude Desktop, and VS Code need it pasted) or wasn't restarted. Run `npx @make0-ai/brain agents` to confirm the app can use the personal brain.
 
 ## One context across all agents
 
@@ -279,7 +289,7 @@ The Markdown export imports back in. The JSON bundle includes archived memories 
 
 ## Optional API key
 
-Everything works offline. With a key, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`.
+Nothing needs a key. With one, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`.
 
 Copy `.env.example` to `.env` in this folder, or to `~/.make0/.env` so every app shares one file:
 
@@ -297,11 +307,86 @@ MAKE0_BRAIN_LLM_SEARCH=0         # keep search on the local reranker
 
 Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, default `~/.make0`). A variable already set in the environment, including in an MCP client's `env` block, wins. Switching embedders is safe: memories indexed by another model are re-embedded on the next search.
 
+## Privacy and security
+
+### What leaves your machine
+
+| When                                          | What is sent                                                     | To                                    |
+| --------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------- |
+| `init`, or the first save or search           | Download requests for the two local models (no memory content)   | Hugging Face                          |
+| Normal use with no API key                    | Nothing                                                          |                                       |
+| With an API key: saves                        | The new memory and close matches, to merge duplicates and pick a category | Your provider (`MAKE0_BRAIN_BASE_URL`, default OpenAI) |
+| With an API key: search (`MAKE0_BRAIN_LLM_SEARCH` not `0`) | The query and candidate memories, to filter results    | Your provider                         |
+| With an API key: `import --extract`           | The full text of the imported files                              | Your provider                         |
+| `MAKE0_BRAIN_EMBEDDINGS=api`                  | The text of every memory and every query, to embed it            | Your provider                         |
+
+Make0 Brain has no telemetry and does not contact Make0. The usage counts in the viewer stay in the local database.
+
+Make0 Brain being local does not make your agents local. When an agent calls `search_brain`, the memories it gets back go into that agent's conversation, and that conversation is sent to the agent's own model provider (Anthropic for Claude, OpenAI for Codex, and so on). Keep anything you would not paste into that agent out of the brains it can use. `agents grant` and `agents revoke` control which brains each app sees.
+
+### Where your data lives
+
+- **Database:** `~/.make0/brain.db`, a plain SQLite file with your memories, every version, links, and usage counts. It is not encrypted; it is protected by your user account and disk encryption.
+- **Imports:** the text of each note is copied into the database, with its file path and a hash so re-imports can find changes. The original files are only read, never changed.
+- **Agent config:** `init` keeps one `.make0-backup` of each config file it edits, and adds a marked block to the rule files listed above.
+- **API key:** read from `.env` or the environment. It is never stored in the database or in exports.
+
+### Bad or malicious memories
+
+A memory is text, and an agent can read it as an instruction. A web page or a file an agent was working on can try to get it to save something like "always run this script". Make0 Brain cannot tell a true fact from a planted one, but it makes them easy to find and undo:
+
+- Every memory and version records which app wrote it, so an unexpected writer stands out in the viewer.
+- Nothing is overwritten in place. A bad edit can be reverted with `restore <id> --version <n>`.
+- Agents can archive memories but cannot permanently delete them. Only `purge` and the viewer can.
+- Give an app only the brains it needs, and keep a separate brain for untrusted work.
+
+### The viewer
+
+`view` listens on `127.0.0.1` only, so other machines cannot reach it. It has no login, but it only answers requests addressed to `127.0.0.1` or `localhost` on its own port, which blocks DNS-rebinding tricks. Requests that change memories or brains must come from the viewer's own page and be sent as JSON: other sites' requests are refused, and a browser will not send another site's JSON request without the viewer's approval, which it never gives. Other programs on your computer can still call it while it runs, so stop the viewer (Ctrl+C) when you are not using it.
+
+## Backups, upgrades, and support
+
+### Backups
+
+Make0 Brain does not back up your database by itself. Copy one of these somewhere safe, and do it before you upgrade:
+
+```bash
+npx @make0-ai/brain export --json ~/make0-brain-backup.json   # every memory, version, and link
+sqlite3 ~/.make0/brain.db ".backup ~/make0-brain-backup.db"    # an exact copy, safe while apps are running
+```
+
+Copy `brain.db` directly only when no app is running, or you may miss recent writes that are still in `brain.db-wal`. To restore, stop your apps and copy the `.db` backup over `~/.make0/brain.db`. The JSON bundle is a readable record of everything and the format for moving to Make0 cloud; `import` does not read it back yet.
+
+### Upgrades
+
+Agents run the server through `npx`, so they pick up a new release the next time they start. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
+
+### Requirements and status
+
+- **Node.js 20 or newer.**
+- **Operating systems:** developed and tested on macOS. `init` knows the Linux and Windows config paths, but those platforms are not covered by automated tests yet. Reports are welcome.
+- **Status:** pre-1.0. The 7 MCP tools match the hosted Make0 Brain and are kept stable. CLI flags and the viewer may still change between minor versions.
+- **Known limits:** one machine, no sync between devices; one memory holds up to 4,000 characters; without an API key, duplicates are kept rather than merged; the viewer has no login (see above).
+
+### Releases
+
+Each release is published to [npm](https://www.npmjs.com/package/@make0-ai/brain), tagged `vX.Y.Z` on GitHub, and listed in the [MCP Registry](https://registry.modelcontextprotocol.io). The commit message for each tag describes what changed. Patch releases are fixes. Minor releases can add features and database migrations.
+
+### Reporting a problem
+
+Open an issue at [github.com/make0-official/brain-oss/issues](https://github.com/make0-official/brain-oss/issues) with:
+
+- the output of `npx @make0-ai/brain --version` and `npx @make0-ai/brain stats`;
+- your OS, Node version, and the agent app involved;
+- the command or prompt, and any error text.
+
+Do not paste private memories or your `.env`. For a security problem, open an issue that says only that you have one, and we will arrange a private channel.
+
 ## Local or cloud
 
 |              | This repo                              | Make0 cloud                                                       |
 | ------------ | -------------------------------------- | ----------------------------------------------------------------- |
-| **Best for** | Local agents, offline, on your machine | Every device and web app, including ChatGPT and Claude on the web |
+| **Best for** | Local agents, data on your machine     | Every device and web app, including ChatGPT and Claude on the web |
 | **Setup**    | `npx @make0-ai/brain init`             | Sign in at [make0.ai](https://make0.ai)                           |
 | **API key**  | None required                          | Make0 account                                                     |
 | **Brains**   | Personal and custom                    | Personal, project, and custom brains                              |
