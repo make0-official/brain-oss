@@ -129,7 +129,7 @@ Open a brain to see its memories as a board, one column per category, with the a
   </picture>
 </p>
 
-Upgrading from an older Make0 Brain does not need a new `init`. The next time an app starts the server, npm picks up the new package and the existing `~/.make0/brain.db` migrates in place. Your memories stay on the personal brain. If `npx @make0-ai/brain --version` is still `0.1.x`, a global install is shadowing npx: `npm install -g @make0-ai/brain@0.2.0`.
+Upgrading from an older Make0 Brain does not need a new `init`. The next time an app starts the server, npm picks up the new package and the existing `~/.make0/brain.db` migrates in place. Your memories stay on the personal brain. If `npx @make0-ai/brain --version` is still `0.1.x`, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`.
 
 ### Every memory knows who wrote it
 
@@ -228,13 +228,13 @@ Restoring makes an older version current again and re-indexes it. No version is 
 
 ## Search quality
 
-Measured on [SWE-ContextBench](https://arxiv.org/abs/2602.08316) Lite, the same comparison as the [Make0 benchmark page](https://make0.ai/benchmarks/swe-contextbench): 300 earlier coding sessions and 99 related issues. The score is how often search returns the gold past session. The local install uses the offline MiniLM embedder and the ms-marco MiniLM reranker, with a mean retrieval time of **0.44s** per query on CPU once the models are loaded.
+Measured on [SWE-ContextBench](https://arxiv.org/abs/2602.08316) Lite, the same comparison as the [Make0 benchmark page](https://make0.ai/benchmarks/swe-contextbench): 300 earlier coding sessions and 99 related issues. The score is how often search returns the gold past session. The local install uses the offline MiniLM embedder and the ms-marco MiniLM reranker. Once the models are loaded, search takes about **80ms** per query on an Apple M2 Pro.
 
 Rank 1, the gold session is the first result:
 
 ```text
 Make0 Brain (cloud)   █████████████████████████████░░░░░░░░░░░  71.7%
-Make0 Brain (local)   █████████████████████████░░░░░░░░░░░░░░░  62.6%  0.44s
+Make0 Brain (local)   █████████████████████████░░░░░░░░░░░░░░░  62.6%  ~80ms
 LangMem               ██████████████████████░░░░░░░░░░░░░░░░░░  55.6%
 OpenViking            ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░  38.4%
 Free summary search   ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  34.3%
@@ -246,7 +246,7 @@ Overall, the gold session appears anywhere in the results:
 
 ```text
 Make0 Brain (cloud)   ██████████████████████████████████████░░  93.9%  top 10
-Make0 Brain (local)   █████████████████████████████████████░░░  92.9%  top 10   0.44s
+Make0 Brain (local)   █████████████████████████████████████░░░  92.9%  top 10   ~80ms
 LangMem               █████████████████████████████░░░░░░░░░░░  73.3%  top 10
 Supermemory           ████████████████████████░░░░░░░░░░░░░░░░  59.6%  top 15
 OpenViking            █████████████████████░░░░░░░░░░░░░░░░░░░  51.5%  top 3
@@ -306,7 +306,7 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | **API key**  | None required                          | Make0 account                                                     |
 | **Brains**   | Personal and custom                    | Personal, project, and custom brains                              |
 | **Storage**  | `~/.make0/brain.db`                    | Hosted                                                            |
-| **Search**   | MiniLM + BM25 + cross-encoder, 0.44s   | Stronger embedder and reranker                                    |
+| **Search**   | MiniLM + BM25 + cross-encoder, ~80ms on an Apple M2 Pro | Stronger embedder and reranker                                    |
 
 A one-command port from local to Make0 cloud is coming. The `export --json` bundle is the format it will use, with history and attribution included.
 

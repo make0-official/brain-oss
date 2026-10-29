@@ -39,6 +39,19 @@ export type MemoryEdge = {
 
 export type MemoryList = { memories: Memory[]; archived: Memory[]; edges: MemoryEdge[] };
 
+export type MemorySearchHit = {
+  id: string;
+  score: number;
+  hop: number;
+};
+
+export type MemorySearchResult = {
+  query: string;
+  /** Embed, retrieval, and rerank on the server. Does not include the HTTP round trip. */
+  searchMs: number;
+  hits: MemorySearchHit[];
+};
+
 export type MemoryVersion = {
   versionNumber: number;
   content: string;
@@ -79,9 +92,10 @@ export type Usage = {
   series: Array<{ clientId: string; brainId: string; points: UsagePoint[] }>;
 };
 
-export async function api<T>(method: string, url: string, body?: unknown): Promise<T> {
+export async function api<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     method,
+    signal,
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

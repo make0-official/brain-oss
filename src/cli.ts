@@ -212,19 +212,19 @@ function openBrowser(url: string): void {
   spawn(command, args, { detached: true, stdio: "ignore" }).unref();
 }
 
-/** Local list view. The list reads SQLite. The first save or embedding view loads the embedder. */
+/** Local list view. Search uses the same hybrid retrieval as the MCP server. */
 async function viewCommand(args: string[]): Promise<void> {
   const portArg = flagValue(args, "--port");
   const port = portArg == null ? 4173 : Number(portArg);
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail("Port must be an integer from 1 to 65535.");
-  const store = new BrainStore(defaultDbPath());
+  const brain = openBrain();
   const openedBrain = flagValue(args, "--brain");
-  const brainId = openedBrain ? resolveBrainArg(store, openedBrain) : undefined;
+  const brainId = openedBrain ? resolveBrainArg(brain.store, openedBrain) : undefined;
   let server;
   try {
-    server = await startViewer(store, port);
+    server = await startViewer(brain, port);
   } catch (error) {
-    store.close();
+    brain.store.close();
     if (error && typeof error === "object" && "code" in error && error.code === "EADDRINUSE") {
       fail(`Port ${port} is already in use. Re-run with --port <n>.`);
     }
@@ -237,7 +237,7 @@ async function viewCommand(args: string[]): Promise<void> {
   if (!args.includes("--no-open")) openBrowser(url);
   const shutdown = () => {
     server.close();
-    store.close();
+    brain.store.close();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

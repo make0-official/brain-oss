@@ -3,10 +3,9 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createEmbeddingProvider } from "../config";
+import type { Brain } from "../brain";
 import { reembedMismatched } from "../embeddings/reembed";
-import type { EmbeddingProvider } from "../embeddings/provider";
-import type { BrainStore } from "../store/store";
+import { searchViewMemories } from "./search";
 import {
   createViewBrain,
   deleteViewBrain,
@@ -94,12 +93,9 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-async function handle(
-  store: BrainStore,
-  embeddings: EmbeddingProvider,
-  request: IncomingMessage,
-  response: ServerResponse,
-): Promise<void> {
+async function handle(brain: Brain, request: IncomingMessage, response: ServerResponse): Promise<void> {
+  const store = brain.store;
+  const embeddings = brain.embeddings;
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   const brainId = requestedBrainId(url.searchParams.get("brain"));
   const brainMatch = /^\/api\/brains\/([^/]+)$/.exec(url.pathname);
@@ -147,6 +143,13 @@ async function handle(
   if (request.method === "GET" && url.pathname === "/api/memories") {
     if (!store.getBrain(brainId)) throw new ViewInputError("Brain not found.");
     sendJson(response, 200, buildMemoryList(store, brainId));
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/search") {
+    if (!store.getBrain(brainId)) throw new ViewInputError("Brain not found.");
+    const query = url.searchParams.get("q") ?? "";
+    if (query.trim().length > 500) throw new ViewInputError("Search query is too long.");
+    sendJson(response, 200, await searchViewMemories(brain, brainId, query));
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/memories") {
@@ -206,13 +209,9 @@ async function handle(
   response.end("Not found");
 }
 
-export function startViewer(
-  store: BrainStore,
-  port: number,
-  embeddings: EmbeddingProvider = createEmbeddingProvider(),
-): Promise<http.Server> {
+export function startViewer(brain: Brain, port: number): Promise<http.Server> {
   const server = http.createServer((request, response) => {
-    void handle(store, embeddings, request, response).catch((error: unknown) => {
+    void handle(brain, request, response).catch((error: unknown) => {
       if (response.headersSent) {
         response.destroy();
         return;
@@ -227,7 +226,7 @@ export function startViewer(
     server.listen(port, "127.0.0.1", () => {
       server.off("error", reject);
       resolve(server);
-      void reembedMismatched(store, embeddings).catch((error: unknown) => {
+      void reembedMismatched(brain.store, brain.embeddings).catch((error: unknown) => {
         console.error("[make0-brain] re-embed failed:", error);
       });
     });

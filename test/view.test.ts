@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { HashingEmbeddingProvider } from "../src/embeddings/hashing";
+import { Brain } from "../src/brain";
+import { HashingEmbeddingProvider, LexicalPairScorer } from "../src/embeddings/hashing";
 import { BrainStore } from "../src/store/store";
 import { buildMemoryList } from "../src/view/list";
 import { startViewer } from "../src/view/server";
@@ -54,7 +55,12 @@ test("buildMemoryList groups live memories and omits embeddings", () => {
 test("viewer serves the list page and the memory API", async () => {
   const store = new BrainStore(":memory:");
   store.createMemory({ ...base, content: "Test phrase is blue heron", originProvider: "claude" });
-  const server = await startViewer(store, 0, new HashingEmbeddingProvider());
+  const brain = new Brain({
+    store,
+    embeddings: new HashingEmbeddingProvider(),
+    pairScorer: new LexicalPairScorer(),
+  });
+  const server = await startViewer(brain, 0);
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("no port");
   const baseUrl = `http://127.0.0.1:${address.port}`;
@@ -78,6 +84,7 @@ test("viewer serves the list page and the memory API", async () => {
   assert.match(html, /This month/);
   assert.match(html, /\/brain\?brain=/);
   assert.match(html, /Search memories/);
+  assert.match(html, /Search\.\.\./);
   assert.match(html, /All brains/);
   assert.match(html, /Recycle bin/);
   assert.match(html, /Make version/);
@@ -250,6 +257,67 @@ test("viewer serves the list page and the memory API", async () => {
   const grantedBody = (await granted.json()) as { brainIds: string[] };
   assert.equal(granted.status, 200);
   assert.deepEqual(grantedBody.brainIds, [createdBrainBody.id]);
+
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  store.close();
+});
+
+test("viewer search runs hybrid retrieval and reports search time", async () => {
+  const store = new BrainStore(":memory:");
+  const bruno = store.createMemory({
+    ...base,
+    content: "My dog is named Bruno",
+    originProvider: "claude",
+    isManuallyAdded: true,
+  });
+  const acme = store.createMemory({
+    ...base,
+    content: "I work as a product designer at Acme",
+    originProvider: "claude",
+    isManuallyAdded: true,
+  });
+  const brain = new Brain({
+    store,
+    embeddings: new HashingEmbeddingProvider(),
+    pairScorer: new LexicalPairScorer(),
+  });
+  const server = await startViewer(brain, 0);
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  const started = performance.now();
+  const found = await fetch(`${baseUrl}/api/search?q=${encodeURIComponent("what is my dog called")}`);
+  const elapsed = performance.now() - started;
+  const body = (await found.json()) as {
+    query: string;
+    searchMs: number;
+    hits: Array<{ id: string; score: number; hop: number; content?: string }>;
+  };
+  assert.equal(found.status, 200);
+  assert.equal(body.query, "what is my dog called");
+  assert.equal(Number.isInteger(body.searchMs), true);
+  assert.ok(body.searchMs >= 0);
+  assert.ok(body.searchMs <= elapsed + 1, "searchMs is retrieval time, not the HTTP round trip");
+  assert.equal(body.hits[0]?.id, bruno.id);
+  assert.equal(body.hits[0]?.hop, 0);
+  assert.equal(typeof body.hits[0]?.score, "number");
+  assert.equal("content" in (body.hits[0] ?? {}), false);
+  const acmeAt = body.hits.findIndex((hit) => hit.id === acme.id);
+  assert.ok(acmeAt === -1 || acmeAt > 0);
+
+  const empty = await fetch(`${baseUrl}/api/search?q=%20`);
+  const emptyBody = (await empty.json()) as { query: string; searchMs: number; hits: unknown[] };
+  assert.equal(empty.status, 200);
+  assert.equal(emptyBody.query, "");
+  assert.equal(emptyBody.searchMs, 0);
+  assert.deepEqual(emptyBody.hits, []);
+
+  const missing = await fetch(`${baseUrl}/api/search?brain=nope&q=dog`);
+  assert.equal(missing.status, 400);
+
+  const tooLong = await fetch(`${baseUrl}/api/search?q=${encodeURIComponent("x".repeat(501))}`);
+  assert.equal(tooLong.status, 400);
 
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   store.close();

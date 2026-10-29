@@ -369,7 +369,53 @@ export type Bm25DocumentScore = {
   id: string;
   score: number;
   normalized: number;
+  /** The hit used a prefix of a complete word, because the query token was not one. */
+  partial: boolean;
 };
+
+/** Prefix fallback only. Shorter fragments match too much of the dictionary. */
+const PARTIAL_KEYWORD_MIN_LENGTH = 3;
+/** A prefix hit counts, but less than the same term typed in full. */
+const PARTIAL_BM25_WEIGHT = 0.75;
+const PARTIAL_KEYWORD_FORM_CAP = 16;
+
+type ResolvedKeyword = {
+  forms: string[];
+  partial: boolean;
+};
+
+function completeWords(documents: Array<{ text: string }>): string[] {
+  const words = new Set<string>();
+  for (const document of documents) {
+    for (const token of tokenize(document.text)) words.add(token);
+  }
+  return [...words];
+}
+
+/**
+ * Exact dictionary hit wins. A fragment that is not itself a complete word
+ * falls back to complete words that start with it (`decid` → `decided`).
+ */
+function resolveKeywordTerms(queryTerms: string[], words: readonly string[]): ResolvedKeyword[] {
+  const vocabulary = new Set(words);
+  return queryTerms.map((term) => {
+    if (vocabulary.has(term) || term.includes("_") || term.length < PARTIAL_KEYWORD_MIN_LENGTH) {
+      return { forms: [term], partial: false };
+    }
+    const forms = words
+      .filter((word) => word.startsWith(term))
+      .sort((left, right) => left.length - right.length || left.localeCompare(right))
+      .slice(0, PARTIAL_KEYWORD_FORM_CAP);
+    if (forms.length === 0) return { forms: [term], partial: false };
+    return { forms, partial: true };
+  });
+}
+
+function termFrequency(tf: Map<string, number>, forms: readonly string[]): number {
+  let count = 0;
+  for (const form of forms) count += tf.get(form) || 0;
+  return count;
+}
 
 function tokenTermFrequency(
   text: string,
@@ -395,33 +441,32 @@ export function scoreDocumentsBm25(
     const { tf, length } = tokenTermFrequency(doc.text);
     return { id: doc.id, tf, length };
   });
+  const resolved = resolveKeywordTerms(queryTerms, completeWords(documents));
 
   const n = tokenized.length;
   const avgdl = tokenized.reduce((sum, doc) => sum + doc.length, 0) / n;
-  const df = new Map<string, number>();
-  for (const term of new Set(queryTerms)) {
-    let count = 0;
+  const idfByTerm = resolved.map((term) => {
+    let documentFrequency = 0;
     for (const doc of tokenized) {
-      if (doc.tf.has(term)) count += 1;
+      if (termFrequency(doc.tf, term.forms) > 0) documentFrequency += 1;
     }
-    df.set(term, count);
-  }
-
-  const idf = (term: string): number => {
-    const documentFrequency = df.get(term) || 0;
     if (documentFrequency === 0) return 0;
     return Math.log(1 + (n - documentFrequency + 0.5) / (documentFrequency + 0.5));
-  };
+  });
 
   const scored = tokenized.map((doc) => {
     let score = 0;
-    for (const term of queryTerms) {
-      const tf = doc.tf.get(term) || 0;
+    let partial = false;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const term = resolved[index];
+      const tf = termFrequency(doc.tf, term.forms);
       if (tf === 0) continue;
+      if (term.partial) partial = true;
       const denom = tf + BM25_K1 * (1 - BM25_B + BM25_B * (doc.length / avgdl));
-      score += idf(term) * ((tf * (BM25_K1 + 1)) / denom);
+      const weight = term.partial ? PARTIAL_BM25_WEIGHT : 1;
+      score += weight * (idfByTerm[index] ?? 0) * ((tf * (BM25_K1 + 1)) / denom);
     }
-    return { id: doc.id, score };
+    return { id: doc.id, score, partial: partial && score > 0 };
   });
 
   const maxScore = Math.max(0, ...scored.map((item) => item.score));

@@ -66,6 +66,10 @@ export type SearchOptions = {
   minConfidence?: number;
   candidateCap?: number;
   neighborHops?: number;
+  /** Pad the ranked list up to this many. `0` keeps only memories above the score floor. */
+  minResults?: number;
+  /** Skip the stale-embedding pass. The caller already ran it outside a search timer. */
+  skipReembed?: boolean;
   /** Defaults to the personal brain. */
   brainId?: string;
 };
@@ -262,7 +266,7 @@ export class Brain {
    */
   async search(query: string, options: SearchOptions = {}): Promise<SearchHit[]> {
     if (!query.trim()) return [];
-    await this.reembedStale();
+    if (!options.skipReembed) await this.reembedStale();
 
     const maxMemories = options.limit ?? 25;
     const minScore = options.minScore ?? 0.15;
@@ -298,6 +302,7 @@ export class Brain {
         minScore,
         relativeRatio,
         candidateCap: options.candidateCap,
+        minResults: options.minResults,
         pairScorer: this.pairScorer,
         llmHooks: this.llm.retrieval,
       },

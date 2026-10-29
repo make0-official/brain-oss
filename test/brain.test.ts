@@ -108,6 +108,18 @@ test("restoreVersion re-embeds the restored content", async () => {
   assert.deepEqual(restored?.embedding, memory.embedding);
 });
 
+test("search matches a typed prefix of a complete word", async () => {
+  const brain = createTestBrain();
+  const { memory } = await brain.addMemory({
+    content: "Decided: the viewer ships as a local app",
+    writer: "claude",
+  });
+  await brain.addMemory({ content: "I prefer window seats on long flights", writer: "claude" });
+  const hits = await brain.search("decid", { minResults: 0 });
+  assert.equal(hits[0]?.memory.id, memory.id);
+  assert.ok(hits.every((hit) => hit.memory.content.startsWith("Decided:")));
+});
+
 test("search ranks the matching memory first", async () => {
   const brain = createTestBrain();
   await brain.addMemory({ content: "My dog is named Bruno", writer: "claude" });

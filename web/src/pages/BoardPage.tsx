@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ChevronLeftIcon,
   CloseIcon,
@@ -20,6 +20,8 @@ import {
   type Embedding,
   type Memory,
   type MemoryList,
+  type MemorySearchHit,
+  type MemorySearchResult,
   type MemoryVersion,
   type ViewConfig,
 } from "../lib/api";
@@ -27,6 +29,8 @@ import {
 const brainId = new URLSearchParams(location.search).get("brain") || "personal";
 const listUrl = `/api/memories?brain=${enc(brainId)}`;
 const VIEW_KEY = "make0-brain-board-view";
+const SEARCH_DEBOUNCE_MS = 300;
+const EMPTY_HITS: MemorySearchHit[] = [];
 const GraphView = lazy(() => import("../components/GraphView"));
 
 type ViewMode = "board" | "3d";
@@ -47,6 +51,12 @@ export function BoardPage() {
   const [list, setList] = useState<MemoryList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<MemorySearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const latestQuery = useRef(query);
+  const searchedList = useRef<MemoryList | null>(null);
+  latestQuery.current = query;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [versions, setVersions] = useState<MemoryVersion[]>([]);
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -112,25 +122,58 @@ export function BoardPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [overlay]);
 
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResult(null);
+      setSearching(false);
+      setSearchFailed(false);
+      searchedList.current = null;
+      return;
+    }
+    if (searchResult?.query === trimmed && searchedList.current === list) {
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setSearchFailed(false);
+    const controller = new AbortController();
+    const requestedList = list;
+    const timer = window.setTimeout(() => {
+      void api<MemorySearchResult>("GET", `/api/search?brain=${enc(brainId)}&q=${enc(trimmed)}`, undefined, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted || latestQuery.current.trim() !== result.query) return;
+          searchedList.current = requestedList;
+          setSearchResult(result);
+          setSearching(false);
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
+          if (latestQuery.current.trim() !== trimmed) return;
+          setSearching(false);
+          setSearchFailed(true);
+          toast(error instanceof Error ? error.message : "Search failed");
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [query, searchResult, list]);
+
   const memories = list?.memories ?? [];
   const archived = list?.archived ?? [];
   const selected = draft?.mode === "edit" ? memories.find((memory) => memory.id === draft.id) ?? null : null;
+  const trimmedQuery = query.trim();
+  const searchExact = searchResult?.query === trimmedQuery ? searchResult : null;
+  const visibleHits = !trimmedQuery ? null : (searchResult?.hits ?? EMPTY_HITS);
+  const searchPending = trimmedQuery.length > 0 && !searchExact;
 
-  const columns = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const groups = new Map<string, Memory[]>();
-    for (const memory of memories) {
-      if (q && !`${memory.content} ${memory.category}`.toLowerCase().includes(q)) continue;
-      groups.set(memory.category, [...(groups.get(memory.category) ?? []), memory]);
-    }
-    return [...groups.entries()]
-      .map(([label, items]) => ({ label, items }))
-      .sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
-  }, [memories, query]);
+  const columns = useMemo(() => groupColumns(memories, visibleHits), [memories, visibleHits]);
   const categoryCount = new Set(memories.map((memory) => memory.category)).size;
   const matchingIds = useMemo(
-    () => (query.trim() ? new Set(columns.flatMap((column) => column.items.map((memory) => memory.id))) : undefined),
-    [columns, query],
+    () => (visibleHits ? new Set(visibleHits.map((hit) => hit.id)) : undefined),
+    [visibleHits],
   );
 
   const compose = (category: string) => {
@@ -237,22 +280,12 @@ export function BoardPage() {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <label
-            className={cn(
-              "flex h-9 w-[min(13rem,calc(100vw-8rem))] items-center gap-1.5 rounded-full border bg-[#fbfaf8]/90 pr-2.5 pl-3 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md dark:bg-[#0d1117]/90",
-              query.trim() ? "border-sky-500 text-sky-600 dark:border-cyan-300 dark:text-cyan-300" : "border-slate-300/80 text-slate-400 dark:border-white/10",
-            )}
-          >
-            <SearchIcon size={14} />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search memories"
-              aria-label="Search memories"
-              className="w-full bg-transparent text-xs text-slate-950 outline-none placeholder:text-slate-500 dark:text-white"
-            />
-          </label>
+          <MemorySearch
+            query={query}
+            searching={searching && !searchExact}
+            searchMs={searchExact ? searchExact.searchMs : null}
+            onChange={setQuery}
+          />
           <ChromeButton aria-label={archived.length ? `Recycle bin, ${archived.length} archived` : "Recycle bin"} onClick={() => setOverlay({ kind: "bin" })}>
             <TrashIcon />
             {archived.length ? (
@@ -284,6 +317,10 @@ export function BoardPage() {
         <main className="absolute inset-0">
           {memories.length === 0 ? (
             <StatusPill>No memories yet. Switch to Board to add one.</StatusPill>
+          ) : searchPending && columns.length === 0 ? (
+            <StatusPill>{searchFailed ? "Search failed" : "Searching…"}</StatusPill>
+          ) : trimmedQuery && columns.length === 0 ? (
+            <StatusPill>No matches for “{trimmedQuery}”</StatusPill>
           ) : (
             <Suspense fallback={<StatusPill>Loading 3D view…</StatusPill>}>
               <GraphView
@@ -302,17 +339,19 @@ export function BoardPage() {
             <StatusPill>Couldn’t load Brain</StatusPill>
           ) : !list ? (
             <StatusPill>Loading Brain…</StatusPill>
-          ) : memories.length === 0 && !query.trim() ? (
+          ) : memories.length === 0 && !trimmedQuery ? (
             <NewCategoryColumn onCompose={compose} />
+          ) : searchPending && columns.length === 0 ? (
+            <StatusPill>{searchFailed ? "Search failed" : "Searching…"}</StatusPill>
           ) : columns.length === 0 ? (
-            <StatusPill>No matches for “{query.trim()}”</StatusPill>
+            <StatusPill>No matches for “{trimmedQuery}”</StatusPill>
           ) : (
             <>
-              {!query.trim() ? <NewCategoryColumn onCompose={compose} /> : null}
+              {!trimmedQuery ? <NewCategoryColumn onCompose={compose} /> : null}
               {columns.map((column) => (
                 <section
                   key={column.label}
-                  className="flex max-h-[calc(100%-1.5rem)] w-[min(18.5rem,calc(100vw-2.5rem))] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-300/80 bg-[#fbfaf8] shadow-[0_12px_32px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#06080c]"
+                  className="flex max-h-[calc(100%-4rem)] w-[min(18.5rem,calc(100vw-2.5rem))] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-300/80 bg-[#fbfaf8] shadow-[0_12px_32px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#06080c]"
                 >
                   <header className="shrink-0 border-b border-black/[0.08] px-3 pt-3 pb-2.5 dark:border-white/10">
                     <h2 className="truncate text-sm font-semibold text-slate-950 dark:text-white">{column.label}</h2>
@@ -472,6 +511,79 @@ export function BoardPage() {
       {overlay?.kind === "embedding" && draft?.id ? <EmbeddingModal memoryId={draft.id} onClose={() => setOverlay(null)} /> : null}
       <Toaster />
     </div>
+  );
+}
+
+function groupColumns(memories: Memory[], hits: MemorySearchHit[] | null) {
+  const rank = hits ? new Map(hits.map((hit, index) => [hit.id, index])) : null;
+  const groups = new Map<string, Memory[]>();
+  for (const memory of memories) {
+    if (rank && !rank.has(memory.id)) continue;
+    groups.set(memory.category, [...(groups.get(memory.category) ?? []), memory]);
+  }
+  return [...groups.entries()]
+    .map(([label, items]) => ({
+      label,
+      items: rank ? [...items].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)) : items,
+    }))
+    .sort((a, b) => {
+      if (!rank) return b.items.length - a.items.length || a.label.localeCompare(b.label);
+      const best = (items: Memory[]) => Math.min(...items.map((item) => rank.get(item.id) ?? Number.POSITIVE_INFINITY));
+      return best(a.items) - best(b.items) || a.label.localeCompare(b.label);
+    });
+}
+
+function formatSearchMs(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = ms / 1000;
+  return `${seconds >= 10 ? Math.round(seconds).toString() : seconds.toFixed(1)} s`;
+}
+
+function MemorySearch({
+  query,
+  onChange,
+  searching,
+  searchMs,
+}: {
+  query: string;
+  onChange: (value: string) => void;
+  searching: boolean;
+  searchMs: number | null;
+}) {
+  const active = query.trim().length > 0;
+  return (
+    <label
+      className={cn(
+        "flex h-11 w-[min(18rem,calc(100vw-8rem))] min-w-0 items-center gap-2 rounded-full border bg-white pr-3 pl-3.5 shadow-[0_16px_40px_rgba(15,23,42,0.14)] focus-within:ring-2 dark:bg-[#0d1117]",
+        active
+          ? "border-sky-500 focus-within:ring-sky-500/20 dark:border-cyan-300 dark:focus-within:ring-cyan-300/20"
+          : "border-slate-400/90 focus-within:border-slate-950 focus-within:ring-slate-950/10 dark:border-white/25 dark:focus-within:border-white dark:focus-within:ring-white/15",
+      )}
+    >
+      <SearchIcon size={16} className={active ? "shrink-0 text-sky-600 dark:text-cyan-300" : "shrink-0 text-slate-500 dark:text-slate-400"} />
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search..."
+        aria-label="Search memories"
+        aria-busy={searching}
+        autoComplete="off"
+        spellCheck={false}
+        className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-slate-400 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+      />
+      {searchMs != null ? (
+        <span
+          title="Search time"
+          aria-live="polite"
+          className="shrink-0 text-[11px] font-medium tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400"
+        >
+          {formatSearchMs(searchMs)}
+        </span>
+      ) : searching ? (
+        <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-sky-500 dark:bg-cyan-300" aria-hidden />
+      ) : null}
+    </label>
   );
 }
 

@@ -95,6 +95,27 @@ test("temporal when-questions boost memories that contain event dates", () => {
   );
 });
 
+test("BM25 prefix-matches a fragment that is not a complete word", () => {
+  const ranked = scoreDocumentsBm25("decid", [
+    { id: "decision", text: "Decided: ship the viewer as a local app." },
+    { id: "other", text: "I prefer window seats on long flights." },
+  ]);
+  assert.equal(ranked[0]?.id, "decision");
+  assert.equal(ranked[0]?.partial, true);
+  assert.ok((ranked[0]?.score ?? 0) > 0);
+  assert.equal(ranked.find((item) => item.id === "other")?.score ?? 0, 0);
+});
+
+test("BM25 stays on the whole word when that word is in the dictionary", () => {
+  const ranked = scoreDocumentsBm25("cat", [
+    { id: "pet", text: "The cat sleeps on the sofa." },
+    { id: "work", text: "The category list is long." },
+  ]);
+  assert.equal(ranked[0]?.id, "pet");
+  assert.equal(ranked[0]?.partial, false);
+  assert.equal(ranked.find((item) => item.id === "work")?.score ?? 0, 0);
+});
+
 test("BM25 phrase terms prefer an exact two-word match", () => {
   const ranked = scoreDocumentsBm25("dark mode", [
     { id: "pref", text: "The user prefers dark mode in the editor." },

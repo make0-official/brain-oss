@@ -38,6 +38,8 @@ type MemoryRetrievalCandidate = RankableMemory & {
   bm25?: number;
   vector?: number;
   retrieveScore?: number;
+  /** BM25 hit came from a prefix of a complete word. */
+  partialKeyword?: boolean;
 };
 
 function allVectorScores(
@@ -67,11 +69,17 @@ function retrieveScore(vector?: number, bm25?: number, dateScore = 0): number {
   return Math.max(vector ?? 0, bm25 ?? 0);
 }
 
-export function blendMemoryRerankScore(crossEncoderScore: number, hybridScore: number): number {
-  return (
+export function blendMemoryRerankScore(
+  crossEncoderScore: number,
+  hybridScore: number,
+  keywordScore = 0,
+): number {
+  const blended =
     crossEncoderScore * MEMORY_RETRIEVAL_CROSS_ENCODER_BLEND +
-    hybridScore * (1 - MEMORY_RETRIEVAL_CROSS_ENCODER_BLEND)
-  );
+    hybridScore * (1 - MEMORY_RETRIEVAL_CROSS_ENCODER_BLEND);
+  // A typed fragment has no exact token for the reranker. Keep a real prefix hit
+  // above the score floor instead of dropping it.
+  return Math.max(blended, keywordScore * 0.5);
 }
 
 export function buildHybridCandidates(
@@ -118,9 +126,18 @@ export function buildHybridCandidates(
     const memory = memoryById.get(id);
     if (!memory) return [];
     const vector = vectorById.get(id);
-    const bm25 = bm25ById.get(id)?.normalized ?? 0;
+    const bm25Hit = bm25ById.get(id);
+    const bm25 = bm25Hit?.normalized ?? 0;
     const dateScore = anyDateMatch ? (dateById.get(id) ?? 0) : 0;
-    return [{ ...memory, bm25, vector, retrieveScore: retrieveScore(vector, bm25, dateScore) }];
+    return [
+      {
+        ...memory,
+        bm25,
+        vector,
+        partialKeyword: bm25Hit?.partial ?? false,
+        retrieveScore: retrieveScore(vector, bm25, dateScore),
+      },
+    ];
   });
 }
 
@@ -177,7 +194,11 @@ async function scoreWithCrossEncoder(
     );
     return pool.map((candidate, index) => ({
       id: candidate.id,
-      score: blendMemoryRerankScore(cross[index] ?? 0, candidate.retrieveScore ?? 0),
+      score: blendMemoryRerankScore(
+        cross[index] ?? 0,
+        candidate.retrieveScore ?? 0,
+        candidate.partialKeyword ? (candidate.bm25 ?? 0) : 0,
+      ),
     }));
   } catch (error) {
     console.error("[make0-brain] cross-encoder failed; using semantic+BM25:", error);
@@ -211,7 +232,11 @@ async function scoreWithLlmFilter(
     const llmById = new Map(ranked.map((item) => [item.id, item.score]));
     return kept.map((candidate) => ({
       id: candidate.id,
-      score: blendMemoryRerankScore(llmById.get(candidate.id) ?? 0, candidate.retrieveScore ?? 0),
+      score: blendMemoryRerankScore(
+        llmById.get(candidate.id) ?? 0,
+        candidate.retrieveScore ?? 0,
+        candidate.partialKeyword ? (candidate.bm25 ?? 0) : 0,
+      ),
     }));
   } catch (error) {
     console.error("[make0-brain] LLM rerank failed; keeping filter order:", error);
