@@ -93,7 +93,23 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-async function handle(brain: Brain, request: IncomingMessage, response: ServerResponse): Promise<void> {
+/**
+ * Turns away requests that did not come from the viewer's own page. The Host check stops DNS rebinding;
+ * the Origin and JSON content-type checks stop other sites in the browser from writing, since a
+ * cross-site `application/json` request needs a CORS preflight this server never answers.
+ */
+function refusal(request: IncomingMessage, pathname: string, port: number): string | null {
+  const allowed = [`127.0.0.1:${port}`, `localhost:${port}`];
+  if (!allowed.includes(request.headers.host ?? "")) return "Unexpected Host header.";
+  if (request.method === "GET" || request.method === "HEAD" || !pathname.startsWith("/api/")) return null;
+  const origin = request.headers.origin;
+  if (origin !== undefined && !allowed.some((host) => origin === `http://${host}`)) return "Cross-site request refused.";
+  const type = (request.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") return "Expected content-type application/json.";
+  return null;
+}
+
+async function handle(brain: Brain, port: number, request: IncomingMessage, response: ServerResponse): Promise<void> {
   const store = brain.store;
   const embeddings = brain.embeddings;
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -106,6 +122,12 @@ async function handle(brain: Brain, request: IncomingMessage, response: ServerRe
   const recoverMatch = /^\/api\/memories\/([^/]+)\/restore$/.exec(url.pathname);
   const embeddingMatch = /^\/api\/memories\/([^/]+)\/embedding$/.exec(url.pathname);
   const purgeMatch = /^\/api\/memories\/([^/]+)\/purge$/.exec(url.pathname);
+
+  const refused = refusal(request, url.pathname, port);
+  if (refused) {
+    sendJson(response, 403, { error: refused });
+    return;
+  }
 
   if (request.method === "GET" && url.pathname === "/api/config") {
     sendJson(response, 200, { ...describeViewConfig(), version });
@@ -211,7 +233,9 @@ async function handle(brain: Brain, request: IncomingMessage, response: ServerRe
 
 export function startViewer(brain: Brain, port: number): Promise<http.Server> {
   const server = http.createServer((request, response) => {
-    void handle(brain, request, response).catch((error: unknown) => {
+    const address = server.address();
+    const listening = address && typeof address !== "string" ? address.port : port;
+    void handle(brain, listening, request, response).catch((error: unknown) => {
       if (response.headersSent) {
         response.destroy();
         return;

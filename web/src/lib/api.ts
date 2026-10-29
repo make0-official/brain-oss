@@ -96,7 +96,8 @@ export async function api<T>(method: string, url: string, body?: unknown, signal
   const response = await fetch(url, {
     method,
     signal,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    // The viewer refuses writes without a JSON content-type, which keeps other sites from sending them.
+    headers: method === "GET" ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
