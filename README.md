@@ -6,7 +6,7 @@ A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server.
 
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
 
-[![Make0 Brain MCP server](https://mcprush.com/badge/make0-brain-mcp/card.svg)](https://mcprush.com/to/make0-brain-mcp?ref=badge)
+[![Make0 Brain MCP server](https://mcprush.com/badge/make0-brain-mcp/card.svg)](https://mcprush.com/to/make0-brain-mcp?ref=badge) [![Make0 Brain MCP server on Glama](https://glama.ai/mcp/servers/make0-official/brain-oss/badges/score.svg)](https://glama.ai/mcp/servers/make0-official/brain-oss)
 
 ```bash
 npx @make0-ai/brain init
