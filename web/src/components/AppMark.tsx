@@ -8,6 +8,8 @@ const LOGOS: Record<string, string> = {
   windsurf: "windsurf",
   gemini: "googlegemini",
   vscode: "visualstudiocode",
+  hermes: "hermes",
+  openclaw: "openclaw",
   claude: "claude",
   chatgpt: "openai",
 };
@@ -19,6 +21,8 @@ const NAME_LOGOS: Array<[RegExp, string]> = [
   [/windsurf/i, "windsurf"],
   [/gemini/i, "googlegemini"],
   [/vs ?code|copilot|visual studio/i, "visualstudiocode"],
+  [/hermes/i, "hermes"],
+  [/openclaw/i, "openclaw"],
 ];
 
 /** Logo file for an app id or memory provider, falling back to the app's name for generic MCP writes. */

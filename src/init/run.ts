@@ -25,21 +25,25 @@ export type InitOptions = {
   /** Download local models after configuring, so the first search is not a download. */
   prefetchModels?: () => Promise<unknown>;
   /** Runs `claude mcp …`; injectable for tests. Null when the CLI is missing. */
-  claudeCli?: ((args: string[]) => { status: number | null }) | null;
+  claudeCli?: CliRunner | null;
+  /** Runs `openclaw mcp …`; injectable for tests. Null when the CLI is missing. */
+  openclawCli?: CliRunner | null;
 };
+
+type CliRunner = (args: string[]) => { status: number | null };
 
 type PlannedClient = {
   client: McpClient;
-  /** Claude Code rewrites ~/.claude.json while running, so prefer its CLI. */
+  /** Claude Code rewrites ~/.claude.json while running and openclaw.json is JSON5, so prefer their CLIs. */
   viaCli: boolean;
   config?: ConfigChange;
   rules?: ConfigChange;
 };
 
-function defaultClaudeCli(): InitOptions["claudeCli"] {
-  const probe = spawnSync("claude", ["--version"], { stdio: "ignore", shell: process.platform === "win32" });
+function defaultCli(command: string): CliRunner | null {
+  const probe = spawnSync(command, ["--version"], { stdio: "ignore", shell: process.platform === "win32" });
   if (probe.status !== 0) return null;
-  return (args) => spawnSync("claude", args, { stdio: "ignore", shell: process.platform === "win32" });
+  return (args) => spawnSync(command, args, { stdio: "ignore", shell: process.platform === "win32" });
 }
 
 export async function runInit(options: InitOptions): Promise<{ configured: string[] }> {
@@ -59,9 +63,11 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
     return { configured: [] };
   }
 
-  const claudeCli = options.claudeCli === undefined ? defaultClaudeCli() : options.claudeCli;
+  const claudeCli = options.claudeCli === undefined ? defaultCli("claude") : options.claudeCli;
+  const wantsOpenclaw = clients.some((client) => client.id === "openclaw");
+  const openclawCli = options.openclawCli !== undefined ? options.openclawCli : wantsOpenclaw ? defaultCli("openclaw") : null;
   const planned: PlannedClient[] = clients.map((client) => {
-    const viaCli = client.id === "claude-code" && claudeCli != null;
+    const viaCli = (client.id === "claude-code" && claudeCli != null) || (client.id === "openclaw" && openclawCli != null);
     return {
       client,
       viaCli,
@@ -72,7 +78,9 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
 
   const lines = ["Make0 Brain will be added to:"];
   for (const { client, viaCli, config, rules } of planned) {
-    const target = viaCli ? "claude mcp add --scope user" : `${config!.file} (${config!.status})`;
+    const target = viaCli
+      ? client.id === "openclaw" ? `openclaw mcp set ${SERVER_NAME}` : "claude mcp add --scope user"
+      : `${config!.file} (${config!.status})`;
     lines.push(`  • ${client.name}: ${target}`);
     if (rules) lines.push(`      rule → ${rules.file} (${rules.status})`);
   }
@@ -88,7 +96,10 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
   const server = stdioServer(env.platform);
   for (const { client, viaCli, config, rules } of planned) {
     try {
-      if (viaCli) {
+      if (viaCli && client.id === "openclaw") {
+        const result = openclawCli!(["mcp", "set", SERVER_NAME, JSON.stringify(server)]);
+        if (result.status !== 0) throw new Error("openclaw mcp set failed");
+      } else if (viaCli) {
         claudeCli!(["mcp", "remove", "--scope", "user", SERVER_NAME]);
         const result = claudeCli!(["mcp", "add", "--scope", "user", SERVER_NAME, "--", server.command, ...server.args]);
         if (result.status !== 0) throw new Error("claude mcp add failed");

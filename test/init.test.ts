@@ -65,6 +65,70 @@ test("Codex TOML: append once, then unchanged", () => {
   assert.equal(planConfigChange(client("codex"), env).status, "unchanged");
 });
 
+test("Hermes YAML: adds under mcp_servers, keeps other keys, then unchanged", () => {
+  const env = tempHome();
+  const file = client("hermes").configPath(env);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "model: hermes-4\nmcp_servers:\n    github:\n        command: npx\ntoolsets: [web]\n");
+  const first = planConfigChange(client("hermes"), env);
+  assert.equal(first.status, "added");
+  assert.equal(
+    first.contents,
+    'model: hermes-4\nmcp_servers:\n    make0-brain:\n        command: "npx"\n        args: ["-y", "@make0-ai/brain"]\n    github:\n        command: npx\ntoolsets: [web]\n',
+  );
+  fs.writeFileSync(file, first.contents!);
+  assert.equal(planConfigChange(client("hermes"), env).status, "unchanged");
+
+  fs.writeFileSync(file, first.contents!.replace('command: "npx"', "command: old"));
+  const updated = planConfigChange(client("hermes"), env);
+  assert.equal(updated.status, "updated");
+  assert.equal(updated.contents, first.contents);
+});
+
+test("Hermes YAML: appends mcp_servers when missing", () => {
+  const env = tempHome();
+  const file = client("hermes").configPath(env);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "model: hermes-4\n");
+  assert.equal(
+    planConfigChange(client("hermes"), env).contents,
+    'model: hermes-4\n\nmcp_servers:\n  make0-brain:\n    command: "npx"\n    args: ["-y", "@make0-ai/brain"]\n',
+  );
+});
+
+test("OpenClaw: adds under mcp.servers; JSON5 asks for the CLI", () => {
+  const env = tempHome();
+  const file = client("openclaw").configPath(env);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ mcp: { servers: { docs: { command: "uvx" } } }, gateway: { port: 1 } }));
+  const next = JSON.parse(planConfigChange(client("openclaw"), env).contents!);
+  assert.deepEqual(next.mcp.servers.docs, { command: "uvx" });
+  assert.deepEqual(next.mcp.servers["make0-brain"], { command: "npx", args: ["-y", "@make0-ai/brain"] });
+  assert.deepEqual(next.gateway, { port: 1 });
+
+  fs.writeFileSync(file, "{ // comment\n gateway: {},\n}");
+  assert.throws(() => planConfigChange(client("openclaw"), env), /openclaw mcp set make0-brain/);
+});
+
+test("runInit prefers the openclaw CLI for OpenClaw", async () => {
+  const env = tempHome();
+  fs.mkdirSync(path.join(env.home, ".openclaw"));
+  const calls: string[][] = [];
+  const result = await runInit({
+    env,
+    confirm: async () => true,
+    log: () => {},
+    claudeCli: null,
+    openclawCli: (args) => {
+      calls.push(args);
+      return { status: 0 };
+    },
+  });
+  assert.deepEqual(result.configured, ["openclaw"]);
+  assert.deepEqual(calls, [["mcp", "set", "make0-brain", '{"command":"npx","args":["-y","@make0-ai/brain"]}']]);
+  assert.equal(fs.existsSync(path.join(env.home, ".openclaw", "openclaw.json")), false);
+});
+
 test("rules block is added once and stripped for import", () => {
   const env = tempHome();
   const file = path.join(env.home, ".claude", "CLAUDE.md");
@@ -187,6 +251,8 @@ test("promptForClients repeats until the answer parses", async () => {
 test("mcp client names map onto init client ids", () => {
   assert.equal(resolveMcpClientId("cursor-vscode"), "cursor");
   assert.equal(resolveMcpClientId("Claude Code"), "claude-code");
+  assert.equal(resolveMcpClientId("hermes-agent"), "hermes");
+  assert.equal(resolveMcpClientId("OpenClaw"), "openclaw");
   assert.equal(resolveMcpClientId("my custom agent"), "my-custom-agent");
   assert.equal(resolveMcpClientId(""), "mcp");
 });

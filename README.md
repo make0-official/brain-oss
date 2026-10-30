@@ -1,10 +1,12 @@
 # Make0 Brain
 
-**One context for every AI agent you use.** Claude Code, Claude Desktop, Cursor, Codex, Windsurf, VS Code, and Gemini CLI all read and write the same memory, and every change is versioned.
+**One context for every AI agent you use.** Claude Code, Claude Desktop, Cursor, Codex, Windsurf, VS Code, Gemini CLI, Hermes Agent, and OpenClaw all read and write the same memory, and every change is versioned.
 
 A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server. After a one-time model download it runs offline with no API key, keeps everything in one SQLite file on your machine, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain.
 
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
+
+[![Make0 Brain MCP server](https://mcprush.com/badge/make0-brain-mcp/card.svg)](https://mcprush.com/to/make0-brain-mcp?ref=badge)
 
 ```bash
 npx @make0-ai/brain init
@@ -43,9 +45,9 @@ Make0 Brain is one memory that all of them share:
 npx @make0-ai/brain init
 ```
 
-`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and Gemini CLI. When more than one is installed, it asks which to configure. Press Enter for all of them, or pass `--clients` to choose up front. `init --yes` configures every detected agent without asking. It then shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each chosen app. It downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
+`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, Hermes Agent, and OpenClaw. When more than one is installed, it asks which to configure. Press Enter for all of them, or pass `--clients` to choose up front. `init --yes` configures every detected agent without asking. It then shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each chosen app. It downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
 
-Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, and VS Code keep rules in settings, so `init` prints the same text for you to paste:
+Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, VS Code, Hermes Agent, and OpenClaw keep rules in settings or a persona file, so `init` prints the same text for you to paste:
 
 ```text
 Make0 Brain is my source of truth for durable memory. Always search it before answering about me, my work, people, preferences, or past decisions. Save lasting facts and decisions to Brain. Never guess or invent memories. Use Brain exclusively for durable memory.
@@ -60,6 +62,8 @@ Make0 Brain is my source of truth for durable memory. Always search it before an
 | Cursor         | Settings → Rules → User Rules. Paste it.                 |
 | Claude Desktop | Settings → Profile → personal preferences. Paste it.     |
 | VS Code        | `.github/copilot-instructions.md` in the repo. Paste it. |
+| Hermes Agent   | `~/.hermes/SOUL.md`. Paste it.                           |
+| OpenClaw       | `~/.openclaw/workspace/AGENTS.md`. Paste it.             |
 
 Skip the rule with `init --no-rules`.
 
@@ -413,7 +417,7 @@ make0-brain restore <id>         Restore an archived memory (--version <n> for a
 make0-brain purge <id> --yes     Permanently delete a memory and its versions
 ```
 
-On a terminal, `init` lists the agents it found and asks which to configure. Press Enter for all of them, or enter numbers (`1,3` or `1-3`) or ids. `init --yes` configures every detected agent without asking. `init --clients` skips the prompt and takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`.
+On a terminal, `init` lists the agents it found and asks which to configure. Press Enter for all of them, or enter numbers (`1,3` or `1-3`) or ids. `init --yes` configures every detected agent without asking. `init --clients` skips the prompt and takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`, `hermes`, `openclaw`.
 
 ### Manual setup
 

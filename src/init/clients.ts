@@ -26,7 +26,7 @@ export function stdioServer(platform: NodeJS.Platform): StdioServer {
     : { command: "npx", args: ["-y", "@make0-ai/brain"] };
 }
 
-type ConfigFormat = "mcpServers" | "vscode" | "codex-toml";
+type ConfigFormat = "mcpServers" | "vscode" | "codex-toml" | "hermes-yaml" | "openclaw";
 
 export type McpClient = {
   id: string;
@@ -104,6 +104,22 @@ export const MCP_CLIENTS: McpClient[] = [
     format: "mcpServers",
     rulesPath: (env) => path.join(env.home, ".gemini", "GEMINI.md"),
   },
+  {
+    id: "hermes",
+    name: "Hermes Agent",
+    detectPath: (env) => path.join(env.home, ".hermes"),
+    configPath: (env) => path.join(env.home, ".hermes", "config.yaml"),
+    format: "hermes-yaml",
+    rulesHint: "Hermes Agent → ~/.hermes/SOUL.md",
+  },
+  {
+    id: "openclaw",
+    name: "OpenClaw",
+    detectPath: (env) => path.join(env.home, ".openclaw"),
+    configPath: (env) => path.join(env.home, ".openclaw", "openclaw.json"),
+    format: "openclaw",
+    rulesHint: "OpenClaw → workspace AGENTS.md (~/.openclaw/workspace/AGENTS.md)",
+  },
 ];
 
 export function detectClients(env: InitEnv, clients = MCP_CLIENTS): McpClient[] {
@@ -122,6 +138,8 @@ const CLIENT_ID_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
   { id: "claude-desktop", pattern: /claude-desktop|claude desktop/ },
   { id: "windsurf", pattern: /windsurf|codeium/ },
   { id: "gemini", pattern: /\bgemini\b/ },
+  { id: "hermes", pattern: /\bhermes\b/ },
+  { id: "openclaw", pattern: /openclaw/ },
   { id: "codex", pattern: /\bcodex\b/ },
   { id: "cursor", pattern: /\bcursor\b/ },
   { id: "vscode", pattern: /vscode|visual studio code|\bcopilot\b/ },
@@ -192,6 +210,27 @@ export function planConfigChange(client: McpClient, env: InitEnv, server = stdio
     return { file, status: "added", contents: `${existing}${separator}${block}` };
   }
 
+  if (client.format === "hermes-yaml") {
+    const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    return planYamlServer(file, existing, server);
+  }
+
+  if (client.format === "openclaw") {
+    let config: Record<string, unknown>;
+    try {
+      config = readJsonObject(file);
+    } catch {
+      // openclaw.json is JSON5; comments or trailing commas need OpenClaw's own CLI.
+      throw new Error(`${file} is not plain JSON. Run: openclaw mcp set ${SERVER_NAME} '${JSON.stringify(server)}'`);
+    }
+    const mcp = objectAt(config, "mcp");
+    const servers = objectAt(mcp, "servers");
+    const previous = servers[SERVER_NAME];
+    if (JSON.stringify(previous) === JSON.stringify(server)) return { file, status: "unchanged" };
+    const next = { ...config, mcp: { ...mcp, servers: { ...servers, [SERVER_NAME]: { ...server } } } };
+    return { file, status: previous ? "updated" : "added", contents: `${JSON.stringify(next, null, 2)}\n` };
+  }
+
   const config = readJsonObject(file);
   const key = client.format === "vscode" ? "servers" : "mcpServers";
   const servers = objectAt(config, key);
@@ -200,6 +239,47 @@ export function planConfigChange(client: McpClient, env: InitEnv, server = stdio
   if (JSON.stringify(previous) === JSON.stringify(entry)) return { file, status: "unchanged" };
   const next = { ...config, [key]: { ...servers, [SERVER_NAME]: entry } };
   return { file, status: previous ? "updated" : "added", contents: `${JSON.stringify(next, null, 2)}\n` };
+}
+
+/** Add or replace our entry under Hermes' top-level `mcp_servers:` key, leaving the rest of the YAML as written. */
+function planYamlServer(file: string, existing: string, server: StdioServer): ConfigChange {
+  const lines = existing.split("\n");
+  const sectionAt = lines.findIndex((line) => /^mcp_servers:\s*(\{\s*\})?\s*(#.*)?$/.test(line));
+  const isChild = (line: string) => line.trim() === "" || line.trim().startsWith("#") || /^\s/.test(line);
+
+  let indent = "  ";
+  let sectionEnd = lines.length;
+  if (sectionAt >= 0) {
+    sectionEnd = sectionAt + 1;
+    while (sectionEnd < lines.length && isChild(lines[sectionEnd])) sectionEnd++;
+    const firstChild = lines.slice(sectionAt + 1, sectionEnd).find((line) => /^\s+[^\s#]/.test(line));
+    if (firstChild) indent = firstChild.match(/^\s+/)![0];
+  }
+  const entry = [
+    `${indent}${SERVER_NAME}:`,
+    `${indent}${indent}command: ${JSON.stringify(server.command)}`,
+    `${indent}${indent}args: [${server.args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
+  ];
+
+  if (sectionAt < 0) {
+    const separator = existing && !existing.endsWith("\n\n") ? (existing.endsWith("\n") ? "\n" : "\n\n") : "";
+    return { file, status: "added", contents: `${existing}${separator}mcp_servers:\n${entry.join("\n")}\n` };
+  }
+
+  const next = [...lines];
+  next[sectionAt] = "mcp_servers:";
+  const entryAt = lines.findIndex((line, index) => index > sectionAt && index < sectionEnd && line === `${indent}${SERVER_NAME}:`);
+  if (entryAt < 0) {
+    next.splice(sectionAt + 1, 0, ...entry);
+    return { file, status: "added", contents: next.join("\n") };
+  }
+  let entryEnd = entryAt + 1;
+  while (entryEnd < sectionEnd && (lines[entryEnd].trim() === "" || lines[entryEnd].startsWith(`${indent}${indent}`))) entryEnd++;
+  // Keep blank lines that separate us from the next entry.
+  while (entryEnd > entryAt + 1 && lines[entryEnd - 1].trim() === "") entryEnd--;
+  if (lines.slice(entryAt, entryEnd).join("\n") === entry.join("\n")) return { file, status: "unchanged" };
+  next.splice(entryAt, entryEnd - entryAt, ...entry);
+  return { file, status: "updated", contents: next.join("\n") };
 }
 
 export function rulesBlock(): string {
