@@ -76,7 +76,7 @@ jobs:
       - name: Publish to the MCP Registry
         run: |
           name="$(node -p "require('./server.json').name")"
-          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=$name" | grep -q "\"version\":\"${TAG#v}\""; then
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers/${name//\//%2F}/versions/${TAG#v}" >/dev/null 2>&1; then
             echo "$name ${TAG#v} is already in the MCP Registry"
             exit 0
           fi
