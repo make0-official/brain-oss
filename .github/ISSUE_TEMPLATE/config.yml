@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/make0-official/brain-oss/security/advisories/new
+    about: Report it privately to the maintainers, not in a public issue.
+  - name: Make0 cloud
+    url: https://make0.ai
+    about: Questions about the hosted Make0 Brain, accounts, or billing.

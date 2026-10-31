@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in Make0 Brain doesn't work as the README says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not paste private memories, your `.env`, or API keys.** A made-up example is enough.
+        For a security problem, use [Report a vulnerability](https://github.com/make0-official/brain-oss/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Include any error text.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran or the prompt you gave the agent.
+      placeholder: |
+        1. npx @make0-ai/brain init --clients cursor
+        2. In Cursor: "Remember that my test fruit is mango."
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx @make0-ai/brain --version`
+    validations:
+      required: true
+  - type: textarea
+    id: stats
+    attributes:
+      label: Stats
+      description: Output of `npx @make0-ai/brain stats` (counts only, no memory text).
+      render: text
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Other]
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent app
+      multiple: true
+      options:
+        - Claude Code
+        - Claude Desktop
+        - Cursor
+        - Windsurf
+        - VS Code
+        - Codex CLI
+        - Gemini CLI
+        - Hermes Agent
+        - OpenClaw
+        - Other MCP client
+        - None (CLI or viewer)
+  - type: dropdown
+    id: api-key
+    attributes:
+      label: API key
+      description: Whether an OpenAI-compatible API key is set for the optional LLM features.
+      options: ["No key", "With a key"]

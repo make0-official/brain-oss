@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for Make0 Brain, or an agent app `init` should support.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: How you picture it working. For a new agent app, include where it keeps its MCP config and its rules or instructions file.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you've tried
+      description: Workarounds or other tools you've used.

@@ -7,6 +7,7 @@ A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server.
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
 
 <p align="center">
+  <a href="https://github.com/make0-official/brain-oss/actions/workflows/ci.yml"><img src="https://github.com/make0-official/brain-oss/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/v/@make0-ai/brain" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/dm/@make0-ai/brain" alt="npm downloads per month"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/make0-official/brain-oss" alt="MIT license"></a>
@@ -392,7 +393,7 @@ Agents run the server through `npx`, so they pick up a new release the next time
 
 ### Releases
 
-Each release is published to [npm](https://www.npmjs.com/package/@make0-ai/brain), tagged `vX.Y.Z` on GitHub, and listed in the [MCP Registry](https://registry.modelcontextprotocol.io). The commit message for each tag describes what changed. Patch releases are fixes. Minor releases can add features and database migrations.
+Each release is published to [npm](https://www.npmjs.com/package/@make0-ai/brain) from GitHub Actions with [provenance](https://docs.npmjs.com/generating-provenance-statements), tagged `vX.Y.Z` in [GitHub Releases](https://github.com/make0-official/brain-oss/releases), and listed in the [MCP Registry](https://registry.modelcontextprotocol.io). [CHANGELOG.md](CHANGELOG.md) describes what changed. Patch releases are fixes. Minor releases can add features and database migrations.
 
 ### Reporting a problem
 
@@ -402,7 +403,7 @@ Open an issue at [github.com/make0-official/brain-oss/issues](https://github.com
 - your OS, Node version, and the agent app involved;
 - the command or prompt, and any error text.
 
-Do not paste private memories or your `.env`. For a security problem, open an issue that says only that you have one, and we will arrange a private channel.
+Do not paste private memories or your `.env`. For a security problem, don't open an issue: report it privately as described in [SECURITY.md](SECURITY.md).
 
 ## Local or cloud
 
@@ -478,6 +479,8 @@ npm run build:web                                   # once, so `npm run dev -- v
 MAKE0_BRAIN_DB=/tmp/try.db npm run dev -- view --no-open
 npm run dev:web                                     # hot reload at http://localhost:5173, API proxied to :4173
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pull requests and releases.
 
 ## License
 

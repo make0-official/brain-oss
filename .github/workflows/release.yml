@@ -1,0 +1,63 @@
+name: Release
+
+# Push a tag like v0.2.4 to publish that version to npm (with provenance),
+# the MCP Registry, and GitHub Releases. See CONTRIBUTING.md.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm trusted publishing and provenance; MCP Registry login
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # npm 11.5+ is needed for trusted publishing; Node 24 ships it.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Check the tag matches package.json and server.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          srv="$(node -p "require('./server.json').version")"
+          srv_pkg="$(node -p "require('./server.json').packages[0].version")"
+          for v in "$pkg" "$srv" "$srv_pkg"; do
+            if [ "$v" != "$tag" ]; then
+              echo "::error::Tag is $tag but package.json is $pkg and server.json is $srv / $srv_pkg"
+              exit 1
+            fi
+          done
+          if ! grep -q "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$tag]' section"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      # prepublishOnly runs the typecheck, the tests, and the build first.
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          awk -v v="$tag" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md | sed '/^\[.*\]: http/d' > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
