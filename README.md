@@ -11,7 +11,7 @@ A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server.
   <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/v/@make0-ai/brain" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/dm/@make0-ai/brain" alt="npm downloads per month"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/make0-official/brain-oss" alt="MIT license"></a>
-  <a href="package.json"><img src="https://img.shields.io/node/v/@make0-ai/brain" alt="Node.js 20 or later"></a>
+  <a href="package.json"><img src="https://img.shields.io/node/v/@make0-ai/brain" alt="Node.js 22 or later"></a>
 </p>
 
 <p align="center">
@@ -386,7 +386,7 @@ Agents run the server through `npx`, so they pick up a new release the next time
 
 ### Requirements and status
 
-- **Node.js 20 or newer.**
+- **Node.js 22 or newer.**
 - **Operating systems:** developed and tested on macOS. `init` knows the Linux and Windows config paths, but those platforms are not covered by automated tests yet. Reports are welcome.
 - **Status:** pre-1.0. The 7 MCP tools match the hosted Make0 Brain and are kept stable. CLI flags and the viewer may still change between minor versions.
 - **Known limits:** one machine, no sync between devices; one memory holds up to 4,000 characters; without an API key, duplicates are kept rather than merged; the viewer has no login (see above).

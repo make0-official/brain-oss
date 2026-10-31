@@ -4,8 +4,9 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+- **Requires Node.js 22 or newer.** `better-sqlite3` 13 needs Node 22, so Make0 Brain crashed on Node 20 even though `engines` allowed it. `engines`, the README, and CI now say Node 22. Node 20 reached end of life in April 2026.
 - README: npm, license, Node, CI, mcprush, and Glama badges; one-click install buttons for Cursor and VS Code.
-- CI runs the typecheck, tests, and build on Linux and macOS with Node 20 and 22.
+- CI runs the typecheck, tests, and build on Linux and macOS with Node 22 and 24.
 - Releases publish from GitHub Actions with npm provenance, and update the MCP Registry and GitHub Releases from a tag push.
 - `SECURITY.md`, `CONTRIBUTING.md`, this changelog, and issue templates.
 

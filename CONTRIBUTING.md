@@ -4,7 +4,7 @@ Thanks for helping with Make0 Brain. Bug reports, fixes, and new agent integrati
 
 ## Set up
 
-You need Node.js 20 or newer.
+You need Node.js 22 or newer.
 
 ```bash
 git clone https://github.com/make0-official/brain-oss.git
