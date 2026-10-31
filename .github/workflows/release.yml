@@ -2,19 +2,31 @@ name: Release
 
 # Push a tag like v0.2.4 to publish that version to npm (with provenance),
 # the MCP Registry, and GitHub Releases. See CONTRIBUTING.md.
+# If a step fails after npm has the version, run this workflow by hand with
+# the same tag: every step skips what is already done.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release, like v0.2.4
+        required: true
 
 permissions:
   contents: write # create the GitHub Release
   id-token: write # npm trusted publishing and provenance; MCP Registry login
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-node@v5
         with:
           # npm 11.5+ is needed for trusted publishing; Node 24 ships it.
@@ -24,7 +36,7 @@ jobs:
 
       - name: Check the tag matches package.json and server.json
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${TAG#v}"
           pkg="$(node -p "require('./package.json').version")"
           srv="$(node -p "require('./server.json').version")"
           srv_pkg="$(node -p "require('./server.json').packages[0].version")"
@@ -43,10 +55,31 @@ jobs:
 
       # prepublishOnly runs the typecheck, the tests, and the build first.
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          if npm view "@make0-ai/brain@${TAG#v}" version >/dev/null 2>&1; then
+            echo "@make0-ai/brain@${TAG#v} is already on npm"
+          else
+            npm publish --provenance --access public
+          fi
+
+      # npm takes a few minutes to serve a new version, and the MCP Registry
+      # refuses a version it cannot find there yet.
+      - name: Wait for npm to serve the version
+        run: |
+          for i in $(seq 1 40); do
+            if npm view "@make0-ai/brain@${TAG#v}" version >/dev/null 2>&1; then exit 0; fi
+            sleep 15
+          done
+          echo "::error::@make0-ai/brain@${TAG#v} is still not on npm after 10 minutes"
+          exit 1
 
       - name: Publish to the MCP Registry
         run: |
+          name="$(node -p "require('./server.json').name")"
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=$name" | grep -q "\"version\":\"${TAG#v}\""; then
+            echo "$name ${TAG#v} is already in the MCP Registry"
+            exit 0
+          fi
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
@@ -55,9 +88,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          tag="${TAG#v}"
           awk -v v="$tag" '
             /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
             found { print }
           ' CHANGELOG.md | sed '/^\[.*\]: http/d' > notes.md
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
