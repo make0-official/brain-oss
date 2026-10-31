@@ -4,6 +4,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-31
+
 - **Requires Node.js 22 or newer.** `better-sqlite3` 13 needs Node 22, so Make0 Brain crashed on Node 20 even though `engines` allowed it. `engines`, the README, and CI now say Node 22. Node 20 reached end of life in April 2026.
 - README: npm, license, Node, CI, mcprush, and Glama badges; one-click install buttons for Cursor and VS Code.
 - CI runs the typecheck, tests, and build on Linux and macOS with Node 22 and 24.
@@ -49,7 +51,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/make0-official/brain-oss/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/make0-official/brain-oss/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/make0-official/brain-oss/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/make0-official/brain-oss/compare/v0.2.0...v0.2.1
