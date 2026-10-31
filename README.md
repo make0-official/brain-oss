@@ -7,6 +7,13 @@ A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server.
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/v/@make0-ai/brain" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@make0-ai/brain"><img src="https://img.shields.io/npm/dm/@make0-ai/brain" alt="npm downloads per month"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/make0-official/brain-oss" alt="MIT license"></a>
+  <a href="package.json"><img src="https://img.shields.io/node/v/@make0-ai/brain" alt="Node.js 20 or later"></a>
+</p>
+
+<p align="center">
   <a href="https://mcprush.com/to/make0-brain-mcp?ref=badge"><img src="https://mcprush.com/badge/make0-brain-mcp/score.svg" alt="Make0 Brain MCP on mcprush"></a>
   <a href="https://glama.ai/mcp/servers/make0-official/brain-oss"><img src="https://glama.ai/mcp/servers/make0-official/brain-oss/badges/score.svg" alt="Make0 Brain MCP server on Glama"></a>
 </p>
@@ -14,6 +21,14 @@ A local-first, open-source [MCP](https://modelcontextprotocol.io) memory server.
 ```bash
 npx @make0-ai/brain init
 ```
+
+Only using Cursor or VS Code? These buttons add the server to that one app. Run `init` too if you want it to download the models up front and write the custom instruction.
+
+<p align="center">
+  <a href="https://cursor.com/en/install-mcp?name=make0-brain&amp;config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYWtlMC1haS9icmFpbiJdfQ%3D%3D"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/deeplink/mcp-install-light.svg"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add Make0 Brain to Cursor" height="32"></picture></a>
+  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=make0-brain&amp;config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40make0-ai%2Fbrain%22%5D%7D"><img src="https://img.shields.io/badge/VS_Code-Install_Make0_Brain-0098FF?style=for-the-badge" alt="Install Make0 Brain in VS Code" height="32"></a>
+  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=make0-brain&amp;config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40make0-ai%2Fbrain%22%5D%7D&amp;quality=insiders"><img src="https://img.shields.io/badge/VS_Code_Insiders-Install_Make0_Brain-24bfa5?style=for-the-badge" alt="Install Make0 Brain in VS Code Insiders" height="32"></a>
+</p>
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=YXV0Hje9BvE">
