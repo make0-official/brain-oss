@@ -17,6 +17,7 @@ A local-first, open-source AI memory server for [MCP](https://modelcontextprotoc
 <p align="center">
   <a href="https://mcprush.com/to/make0-brain-mcp?ref=badge"><img src="https://mcprush.com/badge/make0-brain-mcp/score.svg" alt="Make0 Brain MCP on mcprush"></a>
   <a href="https://glama.ai/mcp/servers/make0-official/brain-oss"><img src="https://glama.ai/mcp/servers/make0-official/brain-oss/badges/score.svg" alt="Make0 Brain MCP server on Glama"></a>
+  <a href="https://mcpservers.org/servers/make0-official/brain-oss"><img src="https://mcpservers.org/badge.svg" alt="Listed on mcpservers.org"></a>
 </p>
 
 ```bash
