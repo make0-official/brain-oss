@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { defaultDbPath } from "../config";
 import { LOCAL_CROSS_ENCODER_MODEL, LOCAL_EMBEDDING_MODEL } from "../embeddings/local";
-import { resolveLlmConfig } from "../llm/client";
+import { llmSearchEnabled, resolveLlmConfig } from "../llm/client";
 import { MEMORY_EMBEDDING_DIMENSIONS } from "../shared/limits";
 
 export type ViewBrainConfig = {
@@ -20,7 +20,7 @@ type Env = Record<string, string | undefined>;
 export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
   const mode = env.MAKE0_BRAIN_EMBEDDINGS === "api" ? "api" : env.MAKE0_BRAIN_EMBEDDINGS === "hashing" ? "hashing" : "local";
   const llm = resolveLlmConfig(env);
-  const llmSearch = Boolean(llm) && env.MAKE0_BRAIN_LLM_SEARCH !== "0";
+  const llmSearch = llmSearchEnabled(llm, env);
   const dataHome = env.MAKE0_BRAIN_HOME?.trim() || path.join(os.homedir(), ".make0");
 
   const embedder =
@@ -60,7 +60,9 @@ export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
       : {
           name: "Local MiniLM cross-encoder",
           model: LOCAL_CROSS_ENCODER_MODEL,
-          detail: llm
+          detail: llm?.local
+            ? "A local model server is set. Search stays on this faster reranker unless MAKE0_BRAIN_LLM_SEARCH=1."
+            : llm
             ? "An API key is set, and MAKE0_BRAIN_LLM_SEARCH=0 keeps reranking on this local model."
             : "Reranks the semantic and keyword shortlist on this machine. No API key.",
         };
@@ -73,7 +75,9 @@ export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
       ? {
           enabled: true,
           model: llm.model,
-          detail: "The key is set. It can judge duplicates, classify memories, and extract on import. The key itself is not shown here.",
+          detail: llm.local
+            ? `A model server on this machine (${llm.baseUrl}). It judges duplicates, classifies memories, and extracts on import. Nothing leaves this computer.`
+            : "The key is set. It can judge duplicates, classify memories, and extract on import. The key itself is not shown here.",
         }
       : {
           enabled: false,

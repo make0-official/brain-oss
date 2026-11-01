@@ -10,14 +10,14 @@ test("parseEnvFile reads keys, quotes, and export prefixes", () => {
 # comment
 OPENAI_API_KEY=sk-abc
 export MAKE0_BRAIN_LLM_MODEL="gpt-x"
-MAKE0_BRAIN_BASE_URL='http://localhost:11434/v1/'
+MAKE0_BRAIN_LLM_BASE_URL='http://localhost:11434/v1/'
 EMPTY=
 MAKE0_BRAIN_LLM_SEARCH=0
   `);
   assert.deepEqual(parsed, {
     OPENAI_API_KEY: "sk-abc",
     MAKE0_BRAIN_LLM_MODEL: "gpt-x",
-    MAKE0_BRAIN_BASE_URL: "http://localhost:11434/v1/",
+    MAKE0_BRAIN_LLM_BASE_URL: "http://localhost:11434/v1/",
     MAKE0_BRAIN_LLM_SEARCH: "0",
   });
 });

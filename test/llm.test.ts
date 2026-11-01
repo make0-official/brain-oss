@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { Brain } from "../src/brain";
 import { HashingEmbeddingProvider, LexicalPairScorer } from "../src/embeddings/hashing";
 import { parseMemoryClassification } from "../src/llm/classify";
-import { LlmClient, resolveLlmConfig, samplingParams } from "../src/llm/client";
+import { isLocalBaseUrl, LlmClient, llmSearchEnabled, resolveLlmConfig, samplingParams } from "../src/llm/client";
 import { parseExtractedNodes } from "../src/llm/extract";
 import { memoryPairMergedContentIsEntailed, parseMemoryPairVerdict, type PairJudge } from "../src/llm/judge";
 import { parseMemoryKeepIds } from "../src/llm/retrieval";
@@ -23,6 +23,45 @@ test("resolveLlmConfig picks OpenRouter or OpenAI defaults", () => {
   assert.equal(openAi.model, "gpt-x");
   const custom = resolveLlmConfig({ MAKE0_BRAIN_API_KEY: "k", MAKE0_BRAIN_BASE_URL: "http://localhost:11434/v1/" })!;
   assert.equal(custom.baseUrl, "http://localhost:11434/v1");
+});
+
+test("resolveLlmConfig: a localhost server needs no key and keeps search local", () => {
+  const ollama = resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "http://localhost:11434/v1/" })!;
+  assert.equal(ollama.apiKey, "");
+  assert.equal(ollama.local, true);
+  assert.equal(ollama.baseUrl, "http://localhost:11434/v1");
+  assert.equal(ollama.model, "llama3.2");
+  assert.equal(resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "http://127.0.0.1:1234/v1", MAKE0_BRAIN_LLM_MODEL: "qwen3" })!.model, "qwen3");
+  assert.equal(resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "https://llm.example.com/v1" }), null);
+  // A local URL wins over a hosted key in the environment, so nothing leaves the machine.
+  assert.equal(resolveLlmConfig({ OPENAI_API_KEY: "sk", MAKE0_BRAIN_BASE_URL: "http://localhost:11434/v1" })!.apiKey, "");
+  assert.equal(isLocalBaseUrl("http://[::1]:8080/v1"), true);
+  assert.equal(isLocalBaseUrl("http://ollama.localhost/v1"), true);
+  assert.equal(isLocalBaseUrl("http://localhost.evil.com/v1"), false);
+
+  assert.equal(llmSearchEnabled(ollama, {}), false);
+  assert.equal(llmSearchEnabled(ollama, { MAKE0_BRAIN_LLM_SEARCH: "1" }), true);
+  const hosted = resolveLlmConfig({ OPENAI_API_KEY: "sk" });
+  assert.equal(llmSearchEnabled(hosted, {}), true);
+  assert.equal(llmSearchEnabled(hosted, { MAKE0_BRAIN_LLM_SEARCH: "0" }), false);
+  assert.equal(llmSearchEnabled(null, { MAKE0_BRAIN_LLM_SEARCH: "1" }), false);
+});
+
+test("LlmClient: no Authorization header without a key; retries without response_format", async () => {
+  const requests: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+  const fakeFetch = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    requests.push({ headers: init.headers as Record<string, string>, body });
+    if (body.response_format) {
+      return new Response(JSON.stringify({ error: { message: "'response_format.type' must be 'json_schema' or 'text'" } }), { status: 400 });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'Sure: {"ok":true}' } }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const client = new LlmClient(resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "http://localhost:1234/v1" })!, fakeFetch);
+  assert.equal(await client.completeJson({ system: "s", user: "u", maxTokens: 10 }), 'Sure: {"ok":true}');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].headers.Authorization, undefined);
+  assert.equal(requests[1].body.response_format, undefined);
 });
 
 test("LlmClient sends JSON-mode chat and parses embeddings in order", async () => {

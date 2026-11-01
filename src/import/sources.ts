@@ -11,6 +11,7 @@ export type ImportSourceKind =
   | "cursor-rules"
   | "windsurf-rules"
   | "copilot-instructions"
+  | `${string}-session`
   | "stdin";
 
 export type ImportFile = {
@@ -38,6 +39,11 @@ const AGENT_SOURCES = new Set<ImportSourceKind>([
 
 export function isAgentSource(source: ImportSourceKind): boolean {
   return AGENT_SOURCES.has(source);
+}
+
+/** A coding-agent transcript, imported as a digest (see `./sessions`). */
+export function isSessionSource(source: ImportSourceKind): boolean {
+  return source.endsWith("-session");
 }
 
 /** Classify a file by name and location. */

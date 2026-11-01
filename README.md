@@ -2,7 +2,7 @@
 
 **One AI memory for every agent you use.** Claude Code, Claude Desktop, Cursor, Codex, Windsurf, VS Code, Gemini CLI, Hermes Agent, and OpenClaw all read and write the same memory, and every change is versioned.
 
-A local-first, open-source AI memory server for [MCP](https://modelcontextprotocol.io). After a one-time model download it runs offline with no API key, keeps everything in one SQLite file on your machine, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain.
+A local-first, open-source AI memory server for [MCP](https://modelcontextprotocol.io). After a one-time model download it runs offline with no API key, keeps everything in one SQLite file on your machine, and speaks the same 7 tools as the hosted [Make0](https://make0.ai) Brain. It can also start full: one command imports the sessions 41 coding agents already keep on disk.
 
 [Make0](https://make0.ai) · [SWE-ContextBench results](https://make0.ai/benchmarks/swe-contextbench)
 
@@ -65,7 +65,7 @@ Make0 Brain is one memory that all of them share:
 npx @make0-ai/brain init
 ```
 
-`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, Hermes Agent, and OpenClaw. When more than one is installed, it asks which to configure. Press Enter for all of them, or pass `--clients` to choose up front. `init --yes` configures every detected agent without asking. It then shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each chosen app. It downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
+`init` finds Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, Gemini CLI, Hermes Agent, and OpenClaw. When more than one is installed, it shows a checklist of them, all ticked; untick any you want to leave out. Pass `--clients` to choose up front, or `--yes` to configure every detected agent without asking. It then shows what it will change, asks once, keeps a `.make0-backup` of each config file, and adds Make0 Brain to each chosen app. It downloads the two local models (about 50 MB, once) with a progress bar, so your first question to an agent doesn't wait on a download. Restart the apps afterwards.
 
 Connecting the server is not enough. The agent also needs a custom instruction so it searches Brain before answering and saves lasting facts there. `init` writes this into the global rules file for Claude Code (`~/.claude/CLAUDE.md`), Codex (`~/.codex/AGENTS.md`), Gemini (`~/.gemini/GEMINI.md`), and Windsurf. Cursor, Claude Desktop, VS Code, Hermes Agent, and OpenClaw keep rules in settings or a persona file, so `init` prints the same text for you to paste:
 
@@ -91,9 +91,12 @@ Skip the rule with `init --no-rules`.
 
 ```bash
 npx @make0-ai/brain import --detect             # CLAUDE.md, AGENTS.md, Cursor/Windsurf/Copilot rules
+npx @make0-ai/brain import --sessions           # past sessions from 41 coding agents, one digest each
 npx @make0-ai/brain import ~/Documents/MyVault  # an Obsidian vault or any Markdown folder
 pbpaste | npx @make0-ai/brain import -          # e.g. a memory dump copied from ChatGPT
 ```
+
+`import` on its own asks what to import. The details are under [Import and export](#import-and-export).
 
 **3. Look at it.**
 
@@ -112,6 +115,16 @@ The viewer opens on `127.0.0.1` with every brain, how many memories each holds, 
 
 Models live in `~/.make0/models` and data in `~/.make0/brain.db`. If you skip `init` (or pass `--no-models`), the first save or search downloads the models instead.
 
+### Or run it without arguments
+
+Typed in a terminal, `npx @make0-ai/brain` opens a menu: connect agents, import sessions or notes, open the viewer, create a brain, choose which brains an app can use, export, restore an archived memory, or show stats. Any command run without its arguments asks for them the same way, one step at a time, with arrow keys, checkboxes, and a default on Enter. Ctrl+C cancels without changing anything.
+
+Scripts and MCP clients are unaffected. Passing the arguments, adding `--yes`, or running without a terminal skips every question, and MCP clients, which start the server without a terminal, get the server as before. `make0-brain serve` starts the server even in a terminal.
+
+<p align="center">
+  <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/cli-menu.png" alt="The Make0 Brain menu in a terminal: connect agents, import coding-agent sessions, import notes, open the viewer, create a brain, manage app access, export, restore, show stats, or quit" width="640">
+</p>
+
 ### Verify it works
 
 Restart the apps you connected, then check that a memory written by one agent reaches another:
@@ -121,6 +134,31 @@ Restart the apps you connected, then check that a memory written by one agent re
 3. **Check who wrote it.** Run `npx @make0-ai/brain view`, open the personal brain, and click the memory. It shows **Added by Cursor** and a version timeline.
 
 Delete the test memory in the viewer when you are done. If step 1 or 2 doesn't call a Brain tool, the app is missing the custom instruction above (Cursor, Claude Desktop, and VS Code need it pasted) or wasn't restarted. Run `npx @make0-ai/brain agents` to confirm the app can use the personal brain.
+
+## Import directly from
+
+Your coding agents already keep every session on disk. One command reads that history from 41 agents and saves each session as a memory, filed under its project, so the next agent can find what was asked, decided, changed, and broken last time. No API key and no model are needed.
+
+```bash
+npx @make0-ai/brain import --sessions                          # pick agents and a brain step by step
+npx @make0-ai/brain import --sessions --agent cursor,codex     # only these agents
+npx @make0-ai/brain import --list-agents                       # agent ids and names
+```
+
+<table>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/claude-code.svg" width="40" height="40" alt="Claude Code"><br><sub>Claude Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/codex.svg" width="40" height="40" alt="Codex"><br><sub>Codex</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/cursor.svg" width="40" height="40" alt="Cursor"><br><sub>Cursor</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/copilot-chat.svg" width="40" height="40" alt="VS Code Copilot Chat"><br><sub>VS Code Copilot Chat</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/copilot.svg" width="40" height="40" alt="Copilot CLI"><br><sub>Copilot CLI</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/gemini.svg" width="40" height="40" alt="Gemini CLI"><br><sub>Gemini CLI</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/antigravity.svg" width="40" height="40" alt="Antigravity"><br><sub>Antigravity</sub></td></tr>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/opencode.svg" width="40" height="40" alt="opencode"><br><sub>opencode</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/cline.svg" width="40" height="40" alt="Cline"><br><sub>Cline</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/roo.svg" width="40" height="40" alt="Roo Code"><br><sub>Roo Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/kilocode.svg" width="40" height="40" alt="Kilo Code"><br><sub>Kilo Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/continue.svg" width="40" height="40" alt="Continue"><br><sub>Continue</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/aider.svg" width="40" height="40" alt="aider"><br><sub>aider</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/amp.svg" width="40" height="40" alt="Amp"><br><sub>Amp</sub></td></tr>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/goose.svg" width="40" height="40" alt="Goose"><br><sub>Goose</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/crush.svg" width="40" height="40" alt="Crush"><br><sub>Crush</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/zed.svg" width="40" height="40" alt="Zed"><br><sub>Zed</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/hermes.svg" width="40" height="40" alt="Hermes"><br><sub>Hermes</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/openclaw.svg" width="40" height="40" alt="OpenClaw"><br><sub>OpenClaw</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/pi.svg" width="40" height="40" alt="pi"><br><sub>pi</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/omp.svg" width="40" height="40" alt="omp"><br><sub>omp</sub></td></tr>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/senpi.svg" width="40" height="40" alt="Senpi"><br><sub>Senpi</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/gjc.svg" width="40" height="40" alt="gajae-code"><br><sub>gajae-code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/kimchi.svg" width="40" height="40" alt="Kimchi"><br><sub>Kimchi</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/prime.svg" width="40" height="40" alt="prime-agent"><br><sub>prime-agent</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/qwen.svg" width="40" height="40" alt="Qwen Code"><br><sub>Qwen Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/kimi.svg" width="40" height="40" alt="Kimi Code"><br><sub>Kimi Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/kiro.svg" width="40" height="40" alt="Kiro"><br><sub>Kiro</sub></td></tr>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/junie.svg" width="40" height="40" alt="Junie"><br><sub>Junie</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/devin.svg" width="40" height="40" alt="Devin CLI"><br><sub>Devin CLI</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/deepseek.svg" width="40" height="40" alt="DeepSeek Harness"><br><sub>DeepSeek Harness</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/codewhale.svg" width="40" height="40" alt="CodeWhale"><br><sub>CodeWhale</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/codebuddy.svg" width="40" height="40" alt="CodeBuddy"><br><sub>CodeBuddy</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/commandcode.svg" width="40" height="40" alt="Command Code"><br><sub>Command Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/zcode.svg" width="40" height="40" alt="ZCode"><br><sub>ZCode</sub></td></tr>
+  <tr><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/reasonix.svg" width="40" height="40" alt="Reasonix"><br><sub>Reasonix</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/trae.svg" width="40" height="40" alt="TRAE CLI"><br><sub>TRAE CLI</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/muse.svg" width="40" height="40" alt="Muse Code"><br><sub>Muse Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/mcode.svg" width="40" height="40" alt="MiniMax Code"><br><sub>MiniMax Code</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/grok.svg" width="40" height="40" alt="Grok Build"><br><sub>Grok Build</sub></td><td align="center" width="110"><img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/agents/cherrystudio.svg" width="40" height="40" alt="Cherry Studio"><br><sub>Cherry Studio</sub></td></tr>
+</table>
+
+<p align="center">
+  <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/cli-sessions-import.png" alt="import --sessions in a terminal: it finds 160 sessions from the last 30 days, the person picks Claude Code, Codex and OpenClaw, creates a brain named Agent sessions, confirms a summary of 45 sessions, and the import reports 45 added" width="640">
+</p>
+
+In a terminal it asks three things: which of the agents it found to import, which brain to save into (or a new one), and whether the summary is right. Each memory is a digest of one session: what you asked, your corrections, the files that changed, the commands that failed, and how it ended. Credentials are redacted before anything is saved. [Coding-agent sessions](#coding-agent-sessions) covers the time window, the session cap, scripting flags, and the stores that cannot be read.
 
 ## One context across all agents
 
@@ -163,8 +201,6 @@ Open a brain to see its memories as a board, one column per category, with the a
   </picture>
 </p>
 
-Upgrading from an older Make0 Brain does not need a new `init`. The next time an app starts the server, npm picks up the new package and the existing `~/.make0/brain.db` migrates in place. Your memories stay on the personal brain. If `npx @make0-ai/brain --version` is still `0.1.x`, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`.
-
 ### Every memory knows who wrote it
 
 Make0 Brain reads the client name each app sends when it connects and records it as the writer: `claude`, `chatgpt`, or `cursor`. Any other app is recorded as `mcp`, with its own client name kept too. Search results show `addedBy` for each memory, and every version records who wrote it. You can see which agent learned what.
@@ -183,7 +219,7 @@ Every memory an app retrieves or writes is counted per app and per brain, with a
 ### Context stays consistent
 
 - **Contradictions replace older facts.** If Cursor saves "I don't like dark mode in my editor" after Claude saved "I like dark mode in my editor", the newer memory wins and the older one is archived, with its history intact.
-- **Duplicates merge (with an API key).** An LLM judge compares close matches and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts. Without a key, duplicates are kept rather than guessed at.
+- **Duplicates merge (with an API key or a local model).** An LLM judge compares close matches and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts. Without one, duplicates are kept rather than guessed at.
 - **Related memories are linked.** Similar memories get links automatically, and search follows them up to two hops, so asking about a project also surfaces the decisions tied to it.
 
 Switch a brain to **3D** to orbit and zoom through it: categories branch from the center, and each memory sits on its category.
@@ -194,10 +230,6 @@ Switch a brain to **3D** to orbit and zoom through it: categories branch from th
     <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/viewer-graph-light.png" alt="3D view of the personal brain: 35 memories grouped into categories such as Tooling, Coding style, Infrastructure, Security, and About me">
   </picture>
 </p>
-
-### Your existing agent rules become shared memory
-
-`import --detect` reads the rule files you already wrote for one agent and makes them available to all of them. Make0 Brain's own "search Brain first" block is stripped out so it is never imported as a memory.
 
 ## Memory versioning
 
@@ -297,10 +329,29 @@ How search works: MiniLM embeddings and BM25 keyword scores are blended, a cross
 ### Import
 
 - **Folders and vaults.** Each note becomes one memory. Long notes split by heading, and each part keeps the note title. Frontmatter tags or the folder name become the category. Obsidian `[[wikilinks]]` become links between memories. `.obsidian/` and `.trash/` are skipped.
-- **Agent rule files.** `--detect` finds global rules under your home folder and project rules in the current folder.
-- **Re-runs are safe.** Unchanged sections are skipped, edited ones get a new version, and memories you deleted stay deleted.
-- **`--extract`** (needs an API key) turns files into one-fact memories instead of note-sized ones.
-- `--dry-run` shows what would change. Imports over 200 memories ask first; `--yes` skips the question.
+- **Agent rule files.** `--detect` finds the rule files you already wrote for one agent (global ones under your home folder, project ones in the current folder) and makes them available to all of them. Make0 Brain's own "search Brain first" block is stripped out, so it is never imported as a memory.
+- **Coding-agent sessions.** `--sessions`; see [below](#coding-agent-sessions).
+- **Re-runs are safe.** Unchanged items are skipped, edited ones get a new version, and memories you deleted stay deleted.
+- **`--extract`** (needs an API key or a local model) turns files into one-fact memories instead of note-sized ones. With `--sessions` it keeps only what stays true after the session: your preferences and corrections, project decisions, and fixes for errors that may come back.
+- **`--brain <id>`** picks the brain; at a terminal you are asked instead. `--dry-run` shows what would change without saving or creating anything. Imports over 200 memories ask first; `--yes` skips the question.
+
+### Coding-agent sessions
+
+`--sessions` reads the session history coding agents already keep on your machine and saves one memory per session, in a category per project (**Sessions · acme-api**), so the board shows a column per project. Each memory records what you asked, your corrections, the files that changed, the commands that failed with their first error line, and how the session ended. No model is involved, so it needs no key.
+
+<p align="center">
+  <img src="https://github.com/make0-official/brain-oss/raw/main/docs/images/cli-sessions-agents.png" alt="The agents step of import --sessions: Cursor 115 sessions unticked, Claude Code 39, Codex 5 and OpenClaw 1 ticked" width="560">
+</p>
+
+- **At a terminal** it lists the agents it found, busiest first, all ticked; then asks for a brain, or creates one; then shows a summary to confirm. In scripts, `--agent cursor,claude-code` picks agents, `--brain <id>` the brain (default personal), and `--yes` skips the questions. `--list-agents` prints every agent id.
+- **Time window and cap.** It reads the last 30 days and at most 500 sessions, the most recently active first. `--since 2w` or `--since all` changes the window, and `--limit 100` or `--limit all` the cap. Sessions outside them are never opened, so a large history (Cursor's database can pass 50 GB) costs a quick scan, not a full read.
+- **Privacy.** API keys, tokens, private keys, passwords, and long random tokens are replaced with `[redacted:<kind>]` before anything is stored.
+- **What is skipped.** Sessions with no prompt you typed, subagent runs, and files under temp folders. When an agent keeps one session in two places (Cursor's CLI transcript and its IDE database), it is imported once.
+- **Re-running** picks up new sessions; a session that grew gets a new version.
+- **Agents read:** the 41 under [Import directly from](#import-directly-from).
+- **Not read:** Windsurf and TRAE IDE (their chats are encrypted), JetBrains AI Assistant, Kiro's headless `data.sqlite3`, Reasonix 1.x frame logs, and Amp threads that live only on ampcode.com.
+- **zstd.** Zed, DeepSeek Harness, and OpenClaw's compressed events are zstd-compressed. Node.js 22.15 or newer decompresses them itself; on older Node.js, Make0 Brain uses the `zstd` command when it is installed and otherwise skips those sessions.
+- The store locations and record formats follow the session format registry in [deja-vu](https://github.com/vshulcz/deja-vu) (MIT).
 
 ### Export
 
@@ -311,9 +362,9 @@ npx @make0-ai/brain export --json brain.json   # every memory, version, and link
 
 The Markdown export imports back in. The JSON bundle includes archived memories and the full version history. It does not include embeddings; whoever reads it re-embeds with their own model.
 
-## Optional API key
+## Optional API key or local model
 
-Nothing needs a key. With one, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`.
+Nothing needs a key. With one, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`. A model running on your own machine can do the same work without a key.
 
 Copy `.env.example` to `.env` in this folder, or to `~/.make0/.env` so every app shares one file:
 
@@ -322,12 +373,29 @@ cp .env.example ~/.make0/.env
 ```
 
 ```text
-OPENAI_API_KEY=sk-...            # or OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY
-MAKE0_BRAIN_BASE_URL=            # any OpenAI-compatible endpoint (optional)
-MAKE0_BRAIN_LLM_MODEL=           # default gpt-6-luna
-MAKE0_BRAIN_EMBEDDINGS=api       # API embeddings instead of local MiniLM
-MAKE0_BRAIN_LLM_SEARCH=0         # keep search on the local reranker
+OPENAI_API_KEY=sk-...          # or OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY
+MAKE0_BRAIN_LLM_BASE_URL=      # any OpenAI-compatible endpoint (optional)
+MAKE0_BRAIN_LLM_MODEL=         # default gpt-6-luna
+MAKE0_BRAIN_EMBEDDINGS=api     # API embeddings instead of local MiniLM
+MAKE0_BRAIN_LLM_SEARCH=0       # keep search on the local reranker
 ```
+
+### Local model (Ollama, LM Studio, llama.cpp)
+
+Point `MAKE0_BRAIN_LLM_BASE_URL` at a server on `localhost` and no key is needed. Nothing leaves your computer.
+
+```bash
+ollama pull llama3.2
+```
+
+```text
+MAKE0_BRAIN_LLM_BASE_URL=http://localhost:11434/v1   # Ollama; LM Studio is http://localhost:1234/v1
+MAKE0_BRAIN_LLM_MODEL=llama3.2                       # default llama3.2 on localhost
+```
+
+A local URL wins over a hosted key set in the same environment. A local model is slower than a hosted API, so its calls get five times longer to answer, and search stays on the fast local reranker unless you set `MAKE0_BRAIN_LLM_SEARCH=1`. Servers that reject OpenAI's JSON mode are asked again without it. A model of 7B parameters or more gives noticeably better merges and extractions than a 1B to 3B one.
+
+`MAKE0_BRAIN_BASE_URL`, the name before 0.3, still works.
 
 Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, default `~/.make0`). A variable already set in the environment, including in an MCP client's `env` block, wins. Switching embedders is safe: memories indexed by another model are re-embedded on the next search.
 
@@ -339,9 +407,11 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | --------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------- |
 | `init`, or the first save or search           | Download requests for the two local models (no memory content)   | Hugging Face                          |
 | Normal use with no API key                    | Nothing                                                          |                                       |
-| With an API key: saves                        | The new memory and close matches, to merge duplicates and pick a category | Your provider (`MAKE0_BRAIN_BASE_URL`, default OpenAI) |
+| With an API key: saves                        | The new memory and close matches, to merge duplicates and pick a category | Your provider (`MAKE0_BRAIN_LLM_BASE_URL`, default OpenAI) |
 | With an API key: search (`MAKE0_BRAIN_LLM_SEARCH` not `0`) | The query and candidate memories, to filter results    | Your provider                         |
-| With an API key: `import --extract`           | The full text of the imported files                              | Your provider                         |
+| With an API key: `import --extract`           | The full text of the imported files (for `--sessions`, the redacted digest) | Your provider                 |
+| With a localhost `MAKE0_BRAIN_LLM_BASE_URL`   | The same as with an API key, but to a server on this machine     | Nothing leaves the machine            |
+| `import --sessions` without `--extract`       | Nothing                                                          |                                       |
 | `MAKE0_BRAIN_EMBEDDINGS=api`                  | The text of every memory and every query, to embed it            | Your provider                         |
 
 Make0 Brain has no telemetry and does not contact Make0. The usage counts in the viewer stay in the local database.
@@ -383,14 +453,14 @@ Copy `brain.db` directly only when no app is running, or you may miss recent wri
 
 ### Upgrades
 
-Agents run the server through `npx`, so they pick up a new release the next time they start. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
+Upgrading does not need a new `init`. Agents run the server through `npx`, so they pick up a new release the next time they start. If `npx @make0-ai/brain --version` shows an old version, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
 
 ### Requirements and status
 
 - **Node.js 22 or newer.**
 - **Operating systems:** developed and tested on macOS. `init` knows the Linux and Windows config paths, but those platforms are not covered by automated tests yet. Reports are welcome.
 - **Status:** pre-1.0. The 7 MCP tools match the hosted Make0 Brain and are kept stable. CLI flags and the viewer may still change between minor versions.
-- **Known limits:** one machine, no sync between devices; one memory holds up to 4,000 characters; without an API key, duplicates are kept rather than merged; the viewer has no login (see above).
+- **Known limits:** one machine, no sync between devices; one memory holds up to 4,000 characters; without an API key or a local model, duplicates are kept rather than merged; the viewer has no login (see above).
 
 ### Releases
 
@@ -424,12 +494,15 @@ A one-command port from local to Make0 cloud is coming. The `export --json` bund
 ### CLI
 
 ```text
-make0-brain                      Run the MCP server over stdio
+make0-brain                      Run the MCP server over stdio; typed in a terminal, open the menu
+make0-brain serve                Run the MCP server, even in a terminal
 make0-brain init                 Add Make0 Brain to your AI apps and download the models (--dry-run, --yes, --clients, --no-rules, --no-models)
 make0-brain import <path…>       Import files, folders, or a vault (--detect, -, --extract, --brain, --dry-run, --yes)
+make0-brain import --sessions    Import coding-agent sessions (--agent, --since, --limit, --brain, --extract, --dry-run, --yes)
+make0-brain import --list-agents List the agents --sessions can read
 make0-brain export [dir]         Markdown export (--json [file] for the bundle, --brain to limit it)
 make0-brain brains               List, create, edit, or delete brains
-make0-brain agents               Show or change which brains each app can use
+make0-brain agents               Show or change which brains each app can use (grant, revoke)
 make0-brain view                 Open the memory viewer in a browser (--port, --no-open, --brain)
 make0-brain stats                Show memory and link counts (--brain)
 make0-brain history <id>         List saved versions of a memory
@@ -437,7 +510,7 @@ make0-brain restore <id>         Restore an archived memory (--version <n> for a
 make0-brain purge <id> --yes     Permanently delete a memory and its versions
 ```
 
-On a terminal, `init` lists the agents it found and asks which to configure. Press Enter for all of them, or enter numbers (`1,3` or `1-3`) or ids. `init --yes` configures every detected agent without asking. `init --clients` skips the prompt and takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`, `hermes`, `openclaw`.
+At a terminal, a command missing its arguments asks for them: `import` asks what to import, `brains create` for a name, description and apps, `brains edit|delete`, `restore`, `purge`, and `history` let you pick from a list, `agents grant|revoke` asks for the app and brains, and `export` for the format and destination. `purge` and `brains delete` default to No. `init --clients` takes a comma-separated list of `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `codex`, `gemini`, `hermes`, `openclaw`.
 
 ### Manual setup
 
@@ -458,11 +531,11 @@ If `init` doesn't cover your app, add a stdio server and paste the custom instru
 | `MAKE0_BRAIN_HOME`                                              | `~/.make0`                                  | Data folder: database, models, `.env`.  |
 | `MAKE0_BRAIN_DB`                                                | `$MAKE0_BRAIN_HOME/brain.db`                | Database file.                          |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `MAKE0_BRAIN_API_KEY` | unset                                       | Turns on the optional LLM features.     |
-| `MAKE0_BRAIN_BASE_URL`                                          | OpenAI, or OpenRouter for an OpenRouter key | OpenAI-compatible endpoint.             |
-| `MAKE0_BRAIN_LLM_MODEL`                                         | `gpt-6-luna`                                | Chat model.                             |
+| `MAKE0_BRAIN_LLM_BASE_URL`                                      | OpenAI, or OpenRouter for an OpenRouter key | OpenAI-compatible endpoint. A localhost one needs no key. Formerly `MAKE0_BRAIN_BASE_URL`. |
+| `MAKE0_BRAIN_LLM_MODEL`                                         | `gpt-6-luna`; `llama3.2` on localhost       | Chat model.                             |
 | `MAKE0_BRAIN_EMBEDDINGS`                                        | `local`                                     | `local` (MiniLM) or `api`.              |
 | `MAKE0_BRAIN_EMBEDDING_MODEL`                                   | `text-embedding-3-small`                    | Embedding model when `api`.             |
-| `MAKE0_BRAIN_LLM_SEARCH`                                        | on with a key                               | `0` keeps search on the local reranker. |
+| `MAKE0_BRAIN_LLM_SEARCH`                                        | on with a key, off with a local model       | `0` keeps search on the local reranker; `1` sends it to a local model. |
 
 ## Develop
 

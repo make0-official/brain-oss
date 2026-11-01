@@ -3,16 +3,19 @@ import type { Brain } from "../brain";
 import type { ExtractedMemory } from "../llm/extract";
 import type { Memory, MemoryEntityType, MemoryKind } from "../shared/types";
 import { extractWikilinks, parseFrontmatter, splitMarkdown } from "./markdown";
-import { type ImportFile, isAgentSource } from "./sources";
+import { type ImportFile, isAgentSource, isSessionSource } from "./sources";
 
 const EMBED_BATCH_SIZE = 32;
 /** Ask before adding more than this many memories in one run. */
 export const IMPORT_CONFIRM_THRESHOLD = 200;
+export const EXTRACT_NEEDS_LLM =
+  "--extract needs an API key (OPENAI_API_KEY, OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY) or a local model server " +
+  "(MAKE0_BRAIN_LLM_BASE_URL=http://localhost:11434/v1 for Ollama) in .env or ~/.make0/.env.";
 const WIKILINK_WEIGHT = 0.8;
 const SECTION_LINK_WEIGHT = 0.85;
 
 export type ImportOptions = {
-  /** LLM fact extraction (BYO key) instead of section dump. */
+  /** LLM fact extraction (BYO key or local model) instead of section dump. */
   extract?: boolean;
   dryRun?: boolean;
   /** Called with the plan when it adds more than IMPORT_CONFIRM_THRESHOLD; false aborts. */
@@ -65,6 +68,11 @@ function dumpAttributes(file: ImportFile, tags: string[]) {
   if (isAgentSource(file.source)) {
     return { category: "Agent Instructions", kind: "profile" as const, entityType: "workflow" as const };
   }
+  if (isSessionSource(file.source)) {
+    // One board column per project; a session with no project shares a plain "Sessions" column.
+    const category = file.folder ? `Sessions · ${file.folder}` : "Sessions";
+    return { category: category.slice(0, 80), kind: "work" as const, entityType: "source" as const };
+  }
   const category = tags[0] ? titleCase(tags[0]) : file.folder ? titleCase(file.folder.split("/").pop()!) : "Notes";
   return { category: category.slice(0, 80), kind: "work" as const, entityType: "topic" as const };
 }
@@ -113,9 +121,7 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
     links: 0,
   };
   if (options.extract && !brain.llm.extract) {
-    throw new Error(
-      "--extract needs an API key in .env or ~/.make0/.env (OPENAI_API_KEY, OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY).",
-    );
+    throw new Error(EXTRACT_NEEDS_LLM);
   }
 
   const toAdd: PlannedItem[] = [];
@@ -135,7 +141,8 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
       }
       log(`Extracting facts from ${file.name}…`);
       toReplace.push(...facts.filter((memory) => !memory.deletedAt));
-      toAdd.push(...planExtracted(file, await brain.llm.extract!(file.name, file.text)));
+      const extracted = await brain.llm.extract!(file.name, file.text, isSessionSource(file.source) ? "session" : "document");
+      toAdd.push(...planExtracted(file, extracted));
       continue;
     }
 
