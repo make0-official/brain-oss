@@ -4,6 +4,11 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
+- README: LongMemEval_S retrieval results for the local install, 91.6% Recall@5, 94.4% Recall@10 and 0.915 MRR over 470 questions, with each question type and the 30 abstention questions scored on their own.
+- README: real logos for the 22 agents that showed letter placeholders in the "Import directly from" grid, and an "Any MCP agent" tile.
+
 ## [0.3.0] - 2026-11-01
 
 - **Step-by-step terminal UI.** `make0-brain` typed in a terminal opens a menu, and commands run without their arguments ask for them one step at a time, with arrow keys, checkboxes and a summary before anything changes (`import`, `import --sessions`, `init`, `brains create|edit|delete`, `agents grant|revoke`, `export`, `restore`, `purge`, `history`). Built on `@clack/prompts`. Arguments, `--yes`, or no terminal skip the steps, so scripts and MCP clients behave as before.
@@ -60,7 +65,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/make0-official/brain-oss/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/make0-official/brain-oss/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/make0-official/brain-oss/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/make0-official/brain-oss/compare/v0.2.2...v0.2.3
