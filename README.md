@@ -421,7 +421,8 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | When                                          | What is sent                                                     | To                                    |
 | --------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------- |
 | `init`, or the first save or search           | Download requests for the two local models (no memory content)   | Hugging Face                          |
-| Normal use with no API key                    | Nothing                                                          |                                       |
+| Each launch through `npx`, which is how agents start Brain | A request for the latest release, and a download if there is a new one (no memory content) | npm registry |
+| Saves and searches with no API key            | Nothing                                                          |                                       |
 | With an API key: saves                        | The new memory and close matches, to merge duplicates and pick a category | Your provider (`MAKE0_BRAIN_LLM_BASE_URL`, default OpenAI) |
 | With an API key: search (`MAKE0_BRAIN_LLM_SEARCH` not `0`) | The query and candidate memories, to filter results    | Your provider                         |
 | With an API key: `import --extract`           | The full text of the imported files (for `--sessions`, the redacted digest) | Your provider                 |
@@ -430,6 +431,24 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | `MAKE0_BRAIN_EMBEDDINGS=api`                  | The text of every memory and every query, to embed it            | Your provider                         |
 
 Make0 Brain has no telemetry and does not contact Make0. The usage counts in the viewer stay in the local database.
+
+Agents start Brain with `npx -y @make0-ai/brain`, so each launch contacts the npm registry and runs any newly published release. If the network is down, npx uses its cached copy and Brain still runs.
+
+To turn this off, install a fixed version and point the agent config at the `make0-brain` binary instead of `npx`:
+
+```bash
+npm install -g @make0-ai/brain@<version>
+```
+
+```json
+{
+  "mcpServers": {
+    "make0-brain": { "command": "make0-brain", "args": [] }
+  }
+}
+```
+
+Pinning the version inside the npx command (`npx -y @make0-ai/brain@<version>`) is not enough. It stops automatic updates, but npx still contacts the registry on each launch. Running `init` again puts the `npx` command back, so edit the config again afterwards.
 
 Make0 Brain being local does not make your agents local. When an agent calls `search_brain`, the memories it gets back go into that agent's conversation, and that conversation is sent to the agent's own model provider (Anthropic for Claude, OpenAI for Codex, and so on). Keep anything you would not paste into that agent out of the brains it can use. `agents grant` and `agents revoke` control which brains each app sees.
 
@@ -468,7 +487,7 @@ Copy `brain.db` directly only when no app is running, or you may miss recent wri
 
 ### Upgrades
 
-Upgrading does not need a new `init`. Agents run the server through `npx`, so they pick up a new release the next time they start. If `npx @make0-ai/brain --version` shows an old version, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
+Upgrading does not need a new `init`. Agents run the server through `npx`, so they pick up a new release the next time they start. If you moved to a fixed global install (see [What leaves your machine](#what-leaves-your-machine)), nothing updates until you install a newer version yourself. If `npx @make0-ai/brain --version` shows an old version, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
 
 ### Requirements and status
 
