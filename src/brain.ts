@@ -72,6 +72,8 @@ export type SearchOptions = {
   skipReembed?: boolean;
   /** Defaults to the personal brain. */
   brainId?: string;
+  /** Let a partly typed word match complete words. Viewer search only; off for MCP. */
+  prefixKeywords?: boolean;
 };
 
 export type SearchHit = MemoryContextEntry;
@@ -305,6 +307,7 @@ export class Brain {
         minResults: options.minResults,
         pairScorer: this.pairScorer,
         llmHooks: this.llm.retrieval,
+        prefixKeywords: options.prefixKeywords,
       },
     );
     if (ranked.length === 0) return [];

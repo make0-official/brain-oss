@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { classifyMemoryHeuristic, resolveMemoryClassification } from "../src/write/classify";
+import { PERSONAL_BRAIN_ID } from "../src/shared/types";
+import { searchViewMemories } from "../src/view/search";
 import { ensureMemoryGraphLinks } from "../src/write/links";
 import { createTestBrain } from "./helpers";
 
@@ -115,9 +117,28 @@ test("search matches a typed prefix of a complete word", async () => {
     writer: "claude",
   });
   await brain.addMemory({ content: "I prefer window seats on long flights", writer: "claude" });
-  const hits = await brain.search("decid", { minResults: 0 });
+  const hits = await brain.search("decid", { minResults: 0, prefixKeywords: true });
   assert.equal(hits[0]?.memory.id, memory.id);
   assert.ok(hits.every((hit) => hit.memory.content.startsWith("Decided:")));
+});
+
+test("search leaves prefix matching off by default, as MCP search uses it", async () => {
+  const brain = createTestBrain();
+  await brain.addMemory({ content: "Decided: the viewer ships as a local app", writer: "claude" });
+  const exact = await brain.search("decid", { minResults: 0 });
+  const prefixed = await brain.search("decid", { minResults: 0, prefixKeywords: true });
+  assert.ok((exact[0]?.score ?? 0) < (prefixed[0]?.score ?? 0));
+});
+
+test("viewer search finds a partly typed word", async () => {
+  const brain = createTestBrain();
+  const { memory } = await brain.addMemory({
+    content: "Decided: the viewer ships as a local app",
+    writer: "claude",
+  });
+  await brain.addMemory({ content: "I prefer window seats on long flights", writer: "claude" });
+  const { hits } = await searchViewMemories(brain, PERSONAL_BRAIN_ID, "decid");
+  assert.equal(hits[0]?.id, memory.id);
 });
 
 test("search ranks the matching memory first", async () => {

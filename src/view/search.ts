@@ -16,6 +16,7 @@ export type ViewSearchResult = {
 /**
  * Hybrid retrieval for the viewer: semantic + BM25, rerank, then graph expansion.
  * `minResults: 0` keeps the score floor, so weak padding does not fill the board.
+ * `prefixKeywords` lets a partly typed word find the memory as you type.
  */
 export async function searchViewMemories(brain: Brain, brainId: string, query: string): Promise<ViewSearchResult> {
   const trimmed = query.trim();
@@ -28,6 +29,7 @@ export async function searchViewMemories(brain: Brain, brainId: string, query: s
     limit: 64,
     minResults: 0,
     skipReembed: true,
+    prefixKeywords: true,
   });
   const searchMs = Math.max(0, Math.round(performance.now() - started));
 

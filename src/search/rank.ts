@@ -89,10 +89,11 @@ export function buildHybridCandidates(
     queryEmbedding: number[] | null;
     candidateCap: number;
     fullScanMax: number;
+    prefixKeywords?: boolean;
   },
 ): MemoryRetrievalCandidate[] {
   const memoryById = new Map(memories.map((memory) => [memory.id, memory]));
-  const bm25Hits = scoreDocumentsBm25(query, memories);
+  const bm25Hits = scoreDocumentsBm25(query, memories, { prefixKeywords: options.prefixKeywords });
   const bm25ById = new Map(bm25Hits.map((item) => [item.id, item]));
   const allVectorHits = options.queryEmbedding ? allVectorScores(memories, options.queryEmbedding) : [];
   const vectorById = new Map(allVectorHits.map((item) => [item.id, item.score]));
@@ -264,6 +265,8 @@ export async function rankMemoriesForQuery(
     pairScorer?: PairScorer;
     /** BYO-key LLM filter; tried first, cross-encoder is the fallback. */
     llmHooks?: MemoryRetrievalLlmHooks;
+    /** Let a partly typed word match complete words. Viewer search only. */
+    prefixKeywords?: boolean;
   },
 ): Promise<RankedMemoryCandidate[]> {
   if (memories.length === 0 || !query.trim()) return [];
@@ -279,6 +282,7 @@ export async function rankMemoriesForQuery(
     queryEmbedding: options.queryEmbedding,
     candidateCap: Math.max(candidateCap, MEMORY_RETRIEVAL_VECTOR_CANDIDATES, MEMORY_RETRIEVAL_BM25_CANDIDATES),
     fullScanMax,
+    prefixKeywords: options.prefixKeywords,
   }).sort((left, right) => (right.retrieveScore ?? 0) - (left.retrieveScore ?? 0));
 
   const rerankPool = candidates.slice(0, Math.max(maxResults ?? 0, candidateCap));

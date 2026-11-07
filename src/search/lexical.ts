@@ -429,10 +429,15 @@ function tokenTermFrequency(
   return { tf, length: Math.max(tokens.length, 1) };
 }
 
-/** Okapi BM25 over a memory/document collection. `normalized` is 0–1 vs the top hit. */
+/**
+ * Okapi BM25 over a memory/document collection. `normalized` is 0–1 vs the top hit.
+ * `prefixKeywords` is for a person typing in the viewer. It stays off for agents:
+ * their long queries are full of identifiers that would prefix-match by accident.
+ */
 export function scoreDocumentsBm25(
   query: string,
   documents: Array<{ id: string; text: string }>,
+  options: { prefixKeywords?: boolean } = {},
 ): Bm25DocumentScore[] {
   const queryTerms = bm25QueryTerms(query);
   if (queryTerms.length === 0 || documents.length === 0) return [];
@@ -441,7 +446,9 @@ export function scoreDocumentsBm25(
     const { tf, length } = tokenTermFrequency(doc.text);
     return { id: doc.id, tf, length };
   });
-  const resolved = resolveKeywordTerms(queryTerms, completeWords(documents));
+  const resolved: ResolvedKeyword[] = options.prefixKeywords
+    ? resolveKeywordTerms(queryTerms, completeWords(documents))
+    : queryTerms.map((term) => ({ forms: [term], partial: false }));
 
   const n = tokenized.length;
   const avgdl = tokenized.reduce((sum, doc) => sum + doc.length, 0) / n;
