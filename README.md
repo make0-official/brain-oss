@@ -294,13 +294,13 @@ Restoring makes an older version current again and re-indexes it. No version is 
 
 ## Search quality
 
-Measured on [SWE-ContextBench](https://arxiv.org/abs/2602.08316) Lite, the same comparison as the [Make0 benchmark page](https://make0.ai/benchmarks/swe-contextbench): 300 earlier coding sessions and 99 related issues. The score is how often search returns the gold past session. The local install uses the offline MiniLM embedder and the ms-marco MiniLM reranker. Once the models are loaded, search takes about **80ms** per query on an Apple M2 Pro.
+Measured on [SWE-ContextBench](https://arxiv.org/abs/2602.08316) Lite, the same comparison as the [Make0 benchmark page](https://make0.ai/benchmarks/swe-contextbench): 300 earlier coding sessions and 99 related issues. The score is how often search returns the gold past session. The local install uses the offline MiniLM embedder and the ms-marco MiniLM reranker. Once the models are loaded, search takes about **60ms** per query on an Apple M2 Pro with 300 short memories, and about **430ms** in this benchmark, where each query is a whole GitHub issue and each memory a full coding session.
 
 Rank 1, the gold session is the first result:
 
 ```text
 Make0 Brain (cloud)   █████████████████████████████░░░░░░░░░░░  71.7%
-Make0 Brain (local)   █████████████████████████░░░░░░░░░░░░░░░  62.6%  ~80ms
+Make0 Brain (local)   █████████████████████████░░░░░░░░░░░░░░░  62.6%  ~430ms
 LangMem               ██████████████████████░░░░░░░░░░░░░░░░░░  55.6%
 OpenViking            ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░  38.4%
 Free summary search   ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  34.3%
@@ -312,7 +312,7 @@ Overall, the gold session appears anywhere in the results:
 
 ```text
 Make0 Brain (cloud)   ██████████████████████████████████████░░  93.9%  top 10
-Make0 Brain (local)   █████████████████████████████████████░░░  92.9%  top 10   ~80ms
+Make0 Brain (local)   █████████████████████████████████████░░░  92.9%  top 10   ~430ms
 LangMem               █████████████████████████████░░░░░░░░░░░  73.3%  top 10
 Supermemory           ████████████████████████░░░░░░░░░░░░░░░░  59.6%  top 15
 OpenViking            █████████████████████░░░░░░░░░░░░░░░░░░░  51.5%  top 3
@@ -330,14 +330,14 @@ Measured on [LongMemEval](https://arxiv.org/abs/2410.10813)\_S with the open-sou
 
 | Question type               |  Recall@5 | Recall@10 |       MRR |
 | --------------------------- | --------: | --------: | --------: |
-| **Overall**                 | **91.6%** | **94.4%** | **0.915** |
-| Knowledge update            |     98.6% |     99.3% |     0.972 |
-| Multi-session               |     86.9% |     91.1% |     0.934 |
+| **Overall**                 | **93.9%** | **96.2%** | **0.941** |
+| Knowledge update            |     99.3% |     99.3% |     0.986 |
+| Multi-session               |     90.0% |     93.0% |     0.959 |
 | Single-session assistant    |      100% |      100% |     1.000 |
-| Single-session preference   |     76.7% |     86.7% |     0.597 |
-| Single-session user         |      100% |      100% |     0.941 |
-| Temporal reasoning          |     87.6% |     91.1% |     0.887 |
-| Abstention (not in Overall) |     88.1% |     88.9% |     0.894 |
+| Single-session preference   |     90.0% |     96.7% |     0.717 |
+| Single-session user         |      100% |      100% |     0.965 |
+| Temporal reasoning          |     89.8% |     93.6% |     0.914 |
+| Abstention (not in Overall) |     90.6% |     90.6% |     0.944 |
 
 ## Import and export
 
@@ -519,7 +519,7 @@ Do not paste private memories or your `.env`. For a security problem, don't open
 | **API key**  | None required                          | Make0 account                                                     |
 | **Brains**   | Personal and custom                    | Personal, project, and custom brains                              |
 | **Storage**  | `~/.make0/brain.db`                    | Hosted                                                            |
-| **Search**   | MiniLM + BM25 + cross-encoder, ~80ms on an Apple M2 Pro | Stronger embedder and reranker                                    |
+| **Search**   | MiniLM + BM25 + cross-encoder, ~60ms on an Apple M2 Pro with short memories | Stronger embedder and reranker                                    |
 
 A one-command port from local to Make0 cloud is coming. The `export --json` bundle is the format it will use, with history and attribution included.
 

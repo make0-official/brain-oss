@@ -4,6 +4,12 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-07
+
+- **MCP search no longer prefix-matches keywords.** The prefix matching added in 0.2.1 was meant for the viewer's search box, but it also ran on agent queries, where identifiers and paths matched by accident and lowered retrieval accuracy. On SWE-ContextBench Lite the local install returns to 62.6% at rank 1 and 92.9% overall, from 58.6% and 85.9% in 0.2.1 through 0.3.1. A partly typed word still finds the memory in the viewer.
+- README: corrected LongMemEval_S results for the local install, now 93.9% Recall@5, 96.2% Recall@10 and 0.941 MRR. The earlier run did not pass embeddings to the ranker, so it scored keyword search only. The abstention row is now measured on the local install too.
+- README: corrected search latency, about 60ms with 300 short memories and about 430ms on SWE-ContextBench's long sessions, on an Apple M2 Pro. The earlier ~80ms did not apply to that benchmark.
+
 ## [0.3.1] - 2026-11-01
 
 - README: LongMemEval_S retrieval results for the local install, 91.6% Recall@5, 94.4% Recall@10 and 0.915 MRR over 470 questions, with each question type and the 30 abstention questions scored on their own.
@@ -65,7 +71,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/make0-official/brain-oss/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/make0-official/brain-oss/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/make0-official/brain-oss/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/make0-official/brain-oss/compare/v0.2.3...v0.2.4
