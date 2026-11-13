@@ -590,6 +590,16 @@ npm run dev:web                                     # hot reload at http://local
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pull requests and releases.
 
+## Stargazers
+
+<a href="https://star-history.com/#make0-official/brain-oss&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=make0-official/brain-oss&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=make0-official/brain-oss&type=Date" />
+    <img alt="Star history chart for make0-official/brain-oss" src="https://api.star-history.com/svg?repos=make0-official/brain-oss&type=Date" />
+  </picture>
+</a>
+
 ## License
 
 MIT
