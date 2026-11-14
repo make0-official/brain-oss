@@ -4,6 +4,10 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-14
+
+- `make0-brain` typed at a terminal shows the make0 wordmark and https://make0.ai above the menu, in fixed colors that read on light and dark themes. It is left out when the terminal is too narrow, and commands run with arguments don't print it.
+
 ## [0.3.2] - 2026-11-07
 
 - **MCP search no longer prefix-matches keywords.** The prefix matching added in 0.2.1 was meant for the viewer's search box, but it also ran on agent queries, where identifiers and paths matched by accident and lowered retrieval accuracy. On SWE-ContextBench Lite the local install returns to 62.6% at rank 1 and 92.9% overall, from 58.6% and 85.9% in 0.2.1 through 0.3.1. A partly typed word still finds the memory in the viewer.
@@ -71,7 +75,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/make0-official/brain-oss/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/make0-official/brain-oss/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/make0-official/brain-oss/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/make0-official/brain-oss/compare/v0.2.4...v0.3.0
