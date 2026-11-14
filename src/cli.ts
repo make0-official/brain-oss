@@ -462,6 +462,7 @@ async function main(argv: string[]): Promise<void> {
   // `make0-brain` typed at a terminal opens a menu. MCP clients start it without a
   // terminal (stdin is their pipe), so they still get the server.
   if (argv.length === 0 && canPrompt()) {
+    ui.banner();
     const picked = await withSteps(mainMenuSteps, "one memory for every AI you use");
     if (!picked) return ui.outro("See you next time.");
     argv = picked;

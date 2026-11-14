@@ -198,6 +198,28 @@ export function clackSteps(): Steps {
 
 let introShown = false;
 
+/** "make0" drawn in half blocks, after the wordmark in the make0.ai footer. Each row is [make, 0]. */
+const WORDMARK: [string, string][] = [
+  ["                       ██                   ", " ▄█▀▀▀█▄ "],
+  [" ██▀▀██▀▀█▄   ▀▀▀▀▀█▄  ██  ▄█▀   ▄█▀▀▀▀█▄   ", "██   ▄███"],
+  [" ██  ██  ██   ▄▄▄▄▄██  ██▄█▀     ██▄▄▄▄██   ", "██ ▄█▀ ██"],
+  [" ██  ██  ██  ██    ██  ██▀██     ██         ", "███▀   ██"],
+  [" ██  ██  ██  ▀█▄▄▄▀██  ██  ▀█▄   ▀█▄▄▄▄█▀   ", " ▀█▄▄▄█▀ "],
+];
+
+/**
+ * Fixed colors rather than the theme's palette, so the grey and the site's orange-red
+ * look the same on light and dark backgrounds: truecolor, then 256 colors, then basic.
+ */
+const paint = (rgb: [number, number, number], ansi256: number, basic: (text: string) => string) => (text: string) => {
+  if (!pc.isColorSupported) return text;
+  if (/truecolor|24bit/.test(process.env.COLORTERM ?? "")) return `\x1b[38;2;${rgb.join(";")}m${text}\x1b[39m`;
+  if (/256/.test(process.env.TERM ?? "")) return `\x1b[38;5;${ansi256}m${text}\x1b[39m`;
+  return basic(text);
+};
+const brandGrey = paint([140, 140, 140], 245, pc.gray);
+const brandRed = paint([232, 80, 46], 202, pc.red);
+
 /** The frame around a run of steps: a title bar, a spinner for slow work, a closing line. */
 export const ui = {
   /** Drawn once per run, so a command picked from the menu keeps the menu's title bar. */
@@ -205,6 +227,15 @@ export const ui = {
     if (introShown) return;
     introShown = true;
     clack.intro(`${pc.bgCyan(pc.black(" Make0 Brain "))}${subtitle ? ` ${pc.dim(subtitle)}` : ""}`);
+  },
+  /** The wordmark above the title bar; left out where the terminal is too narrow to hold it. */
+  banner: () => {
+    if (introShown) return;
+    const width = WORDMARK[0][0].length + WORDMARK[0][1].length;
+    if ((process.stdout.columns ?? 80) < width + 2) return;
+    const art = WORDMARK.map(([make, zero]) => brandGrey(make) + brandRed(zero)).join("\n");
+    const site = "https://make0.ai";
+    process.stdout.write(`\n${art}\n${" ".repeat(width - site.length)}${brandGrey(site)}\n\n`);
   },
   outro: (message: string) => clack.outro(message),
   cancel: (message = "Cancelled.") => clack.cancel(message),
