@@ -23,7 +23,7 @@ export function defaultDbPath(): string {
  *
  * MAKE0_BRAIN_EMBEDDINGS: `local` (default, MiniLM), `api` (BYO key,
  * text-embedding-3-small at 384 dims), or `hashing` (no download; CI only).
- * A BYO key or a localhost model server (see `resolveLlmConfig`) turns on the
+ * A BYO key or a model server (see `resolveLlmConfig`) turns on the
  * pair judge, classifier, import extraction, and LLM search filter;
  * MAKE0_BRAIN_LLM_SEARCH=0 keeps search on the local cross-encoder (the
  * default with a local model server, which MAKE0_BRAIN_LLM_SEARCH=1 overrides).
@@ -53,7 +53,7 @@ export function createEmbeddingProvider(
     const llmConfig = resolveLlmConfig(env);
     if (!llmConfig) {
       throw new Error(
-        "MAKE0_BRAIN_EMBEDDINGS=api needs an API key (MAKE0_BRAIN_API_KEY or OPENAI_API_KEY) or a localhost MAKE0_BRAIN_LLM_BASE_URL in .env or ~/.make0/.env.",
+        "MAKE0_BRAIN_EMBEDDINGS=api needs an API key (MAKE0_BRAIN_API_KEY or OPENAI_API_KEY) or a MAKE0_BRAIN_LLM_BASE_URL in .env or ~/.make0/.env.",
       );
     }
     return new ApiEmbeddingProvider(new LlmClient(llmConfig));

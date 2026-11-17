@@ -399,6 +399,8 @@ MAKE0_BRAIN_LLM_SEARCH=0       # keep search on the local reranker
 
 Point `MAKE0_BRAIN_LLM_BASE_URL` at a server on `localhost` and no key is needed. Nothing leaves your computer.
 
+A server on another machine on your network works the same way, such as a Strix Halo mini PC or a desktop GPU at `http://192.168.1.50:8080/v1`. Private addresses (`10.x`, `172.16`–`31.x`, `192.168.x`, Tailscale's `100.64`–`127.x`, IPv6 `fc00::/7` and `fe80::/10`) and `.local`, `.lan`, `.home.arpa`, and `.internal` names are recognized. Memories go to that server and nowhere else. For a hostname Brain cannot place, such as a tunnel, set `MAKE0_BRAIN_LLM_LOCAL=1`; set `0` to treat a private address as a hosted API.
+
 ```bash
 ollama pull llama3.2
 ```
@@ -408,7 +410,7 @@ MAKE0_BRAIN_LLM_BASE_URL=http://localhost:11434/v1   # Ollama; LM Studio is http
 MAKE0_BRAIN_LLM_MODEL=llama3.2                       # default llama3.2 on localhost
 ```
 
-A local URL wins over a hosted key set in the same environment. A local model is slower than a hosted API, so its calls get five times longer to answer, and search stays on the fast local reranker unless you set `MAKE0_BRAIN_LLM_SEARCH=1`. Servers that reject OpenAI's JSON mode are asked again without it. A model of 7B parameters or more gives noticeably better merges and extractions than a 1B to 3B one.
+A local or network URL wins over a hosted key set in the same environment, and that key is never sent to it. A local model is slower than a hosted API, so its calls get five times longer to answer, and search stays on the fast local reranker unless you set `MAKE0_BRAIN_LLM_SEARCH=1`. Servers that reject OpenAI's JSON mode are asked again without it. A model of 7B parameters or more gives noticeably better merges and extractions than a 1B to 3B one.
 
 `MAKE0_BRAIN_BASE_URL`, the name before 0.3, still works.
 
@@ -427,6 +429,7 @@ Make0 Brain reads `./.env`, then `.env` in the data folder (`MAKE0_BRAIN_HOME`, 
 | With an API key: search (`MAKE0_BRAIN_LLM_SEARCH` not `0`) | The query and candidate memories, to filter results    | Your provider                         |
 | With an API key: `import --extract`           | The full text of the imported files (for `--sessions`, the redacted digest) | Your provider                 |
 | With a localhost `MAKE0_BRAIN_LLM_BASE_URL`   | The same as with an API key, but to a server on this machine     | Nothing leaves the machine            |
+| With a private-network `MAKE0_BRAIN_LLM_BASE_URL` | The same as with an API key, but to a server on your network | That server only                      |
 | `import --sessions` without `--extract`       | Nothing                                                          |                                       |
 | `MAKE0_BRAIN_EMBEDDINGS=api`                  | The text of every memory and every query, to embed it            | Your provider                         |
 
@@ -565,8 +568,9 @@ If `init` doesn't cover your app, add a stdio server and paste the custom instru
 | `MAKE0_BRAIN_HOME`                                              | `~/.make0`                                  | Data folder: database, models, `.env`.  |
 | `MAKE0_BRAIN_DB`                                                | `$MAKE0_BRAIN_HOME/brain.db`                | Database file.                          |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `MAKE0_BRAIN_API_KEY` | unset                                       | Turns on the optional LLM features.     |
-| `MAKE0_BRAIN_LLM_BASE_URL`                                      | OpenAI, or OpenRouter for an OpenRouter key | OpenAI-compatible endpoint. A localhost one needs no key. Formerly `MAKE0_BRAIN_BASE_URL`. |
-| `MAKE0_BRAIN_LLM_MODEL`                                         | `gpt-6-luna`; `llama3.2` on localhost       | Chat model.                             |
+| `MAKE0_BRAIN_LLM_BASE_URL`                                      | OpenAI, or OpenRouter for an OpenRouter key | OpenAI-compatible endpoint. Needs no key; one on localhost or a private network counts as a model server you run. Formerly `MAKE0_BRAIN_BASE_URL`. |
+| `MAKE0_BRAIN_LLM_LOCAL`                                         | detected from the URL                       | `1` treats the base URL as a model server you run; `0` as a hosted API. |
+| `MAKE0_BRAIN_LLM_MODEL`                                         | `gpt-6-luna`; `llama3.2` for a model server | Chat model.                             |
 | `MAKE0_BRAIN_EMBEDDINGS`                                        | `local`                                     | `local` (MiniLM) or `api`.              |
 | `MAKE0_BRAIN_EMBEDDING_MODEL`                                   | `text-embedding-3-small`                    | Embedding model when `api`.             |
 | `MAKE0_BRAIN_LLM_SEARCH`                                        | on with a key, off with a local model       | `0` keeps search on the local reranker; `1` sends it to a local model. |

@@ -61,9 +61,9 @@ export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
           name: "Local MiniLM cross-encoder",
           model: LOCAL_CROSS_ENCODER_MODEL,
           detail: llm?.local
-            ? "A local model server is set. Search stays on this faster reranker unless MAKE0_BRAIN_LLM_SEARCH=1."
+            ? `A model server on ${llm.location === "machine" ? "this machine" : "your network"} is set. Search stays on this faster reranker unless MAKE0_BRAIN_LLM_SEARCH=1.`
             : llm
-            ? "An API key is set, and MAKE0_BRAIN_LLM_SEARCH=0 keeps reranking on this local model."
+            ? "An LLM endpoint is set, and MAKE0_BRAIN_LLM_SEARCH=0 keeps reranking on this local model."
             : "Reranks the semantic and keyword shortlist on this machine. No API key.",
         };
 
@@ -75,9 +75,14 @@ export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
       ? {
           enabled: true,
           model: llm.model,
-          detail: llm.local
-            ? `A model server on this machine (${llm.baseUrl}). It judges duplicates, classifies memories, and extracts on import. Nothing leaves this computer.`
-            : "The key is set. It can judge duplicates, classify memories, and extract on import. The key itself is not shown here.",
+          detail:
+            llm.location === "machine"
+              ? `A model server on this machine (${llm.baseUrl}). It judges duplicates, classifies memories, and extracts on import. Nothing leaves this computer.`
+              : llm.location === "network"
+                ? `A model server on your network (${llm.baseUrl}). It judges duplicates, classifies memories, and extracts on import. Memories go to that server and nowhere else.`
+                : !llm.apiKey
+                  ? `${llm.baseUrl} is set with no key. Set MAKE0_BRAIN_API_KEY if it needs one, or MAKE0_BRAIN_LLM_LOCAL=1 if it is a model server you run.`
+                  : "The key is set. It can judge duplicates, classify memories, and extract on import. The key itself is not shown here.",
         }
       : {
           enabled: false,
@@ -94,6 +99,7 @@ export function describeViewConfig(env: Env = process.env): ViewBrainConfig {
       "MAKE0_BRAIN_EMBEDDING_MODEL sets the API embedding model.",
       "MAKE0_BRAIN_LLM_SEARCH=0 keeps the local MiniLM reranker when a key is set.",
       "MAKE0_BRAIN_LLM_MODEL sets the chat model.",
+      "MAKE0_BRAIN_LLM_LOCAL=1 marks MAKE0_BRAIN_LLM_BASE_URL as a model server you run; 0 treats it as hosted.",
       "Set OPENAI_API_KEY, OPENROUTER_API_KEY, or MAKE0_BRAIN_API_KEY.",
       "MAKE0_BRAIN_DB sets the database file. MAKE0_BRAIN_HOME sets the data folder.",
     ].join("\n"),

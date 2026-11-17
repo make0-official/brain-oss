@@ -101,9 +101,12 @@ variables already set in the environment win — see .env.example):
   MAKE0_BRAIN_DB                   Database file (default $MAKE0_BRAIN_HOME/brain.db)
   MAKE0_BRAIN_API_KEY              Optional key (or OPENROUTER_API_KEY / OPENAI_API_KEY):
                                    merges duplicates, classifies, filters search, --extract
-  MAKE0_BRAIN_LLM_BASE_URL             OpenAI-compatible endpoint; a localhost one needs no key
+  MAKE0_BRAIN_LLM_BASE_URL         OpenAI-compatible endpoint; needs no key. One on localhost
+                                   or a private network (192.168.x, 10.x, .local) is
+                                   treated as a model server you run
                                    (Ollama: http://localhost:11434/v1)
-  MAKE0_BRAIN_LLM_MODEL            Chat model (default gpt-6-luna; llama3.2 on localhost)
+  MAKE0_BRAIN_LLM_LOCAL=1|0        Force the endpoint to count as yours (1) or hosted (0)
+  MAKE0_BRAIN_LLM_MODEL            Chat model (default gpt-6-luna; llama3.2 for a model server)
   MAKE0_BRAIN_EMBEDDINGS           local (default) | api
   MAKE0_BRAIN_LLM_SEARCH=0         Keep search on the local reranker
 `;

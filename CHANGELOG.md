@@ -4,6 +4,10 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+- **Model servers on your home network work without a key.** A `MAKE0_BRAIN_LLM_BASE_URL` on a private address (`192.168.x`, `10.x`, `172.16`–`31.x`, Tailscale's `100.64`–`127.x`, IPv6 `fc00::/7` and `fe80::/10`) or a `.local`, `.lan`, `.home.arpa`, or `.internal` name now gets the same handling as localhost: no key needed, longer timeouts, `llama3.2` as the default model, and search on the local reranker. A hosted provider's key is never sent to it. Before, such a URL with no key quietly turned the LLM features off. Thanks to Sergey Aleksanyan for the report.
+- `MAKE0_BRAIN_LLM_LOCAL=1` marks any base URL as a model server you run, and `0` treats one as a hosted API.
+- A hosted `MAKE0_BRAIN_LLM_BASE_URL` with no key is now used instead of being ignored, so a missing key shows up as the server's error in the log.
+
 ## [0.3.3] - 2026-11-14
 
 - `make0-brain` typed at a terminal shows the make0 wordmark and https://make0.ai above the menu, in fixed colors that read on light and dark themes. It is left out when the terminal is too narrow, and commands run with arguments don't print it.

@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { Brain } from "../src/brain";
 import { HashingEmbeddingProvider, LexicalPairScorer } from "../src/embeddings/hashing";
 import { parseMemoryClassification } from "../src/llm/classify";
-import { isLocalBaseUrl, LlmClient, llmSearchEnabled, resolveLlmConfig, samplingParams } from "../src/llm/client";
+import { endpointLocation, isLocalBaseUrl, isPrivateNetworkBaseUrl, LlmClient, llmSearchEnabled, resolveLlmConfig, samplingParams } from "../src/llm/client";
 import { parseExtractedNodes } from "../src/llm/extract";
 import { memoryPairMergedContentIsEntailed, parseMemoryPairVerdict, type PairJudge } from "../src/llm/judge";
 import { parseMemoryKeepIds } from "../src/llm/retrieval";
@@ -32,7 +32,6 @@ test("resolveLlmConfig: a localhost server needs no key and keeps search local",
   assert.equal(ollama.baseUrl, "http://localhost:11434/v1");
   assert.equal(ollama.model, "llama3.2");
   assert.equal(resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "http://127.0.0.1:1234/v1", MAKE0_BRAIN_LLM_MODEL: "qwen3" })!.model, "qwen3");
-  assert.equal(resolveLlmConfig({ MAKE0_BRAIN_BASE_URL: "https://llm.example.com/v1" }), null);
   // A local URL wins over a hosted key in the environment, so nothing leaves the machine.
   assert.equal(resolveLlmConfig({ OPENAI_API_KEY: "sk", MAKE0_BRAIN_BASE_URL: "http://localhost:11434/v1" })!.apiKey, "");
   assert.equal(isLocalBaseUrl("http://[::1]:8080/v1"), true);
@@ -45,6 +44,76 @@ test("resolveLlmConfig: a localhost server needs no key and keeps search local",
   assert.equal(llmSearchEnabled(hosted, {}), true);
   assert.equal(llmSearchEnabled(hosted, { MAKE0_BRAIN_LLM_SEARCH: "0" }), false);
   assert.equal(llmSearchEnabled(null, { MAKE0_BRAIN_LLM_SEARCH: "1" }), false);
+});
+
+test("isPrivateNetworkBaseUrl: private ranges and home-network names", () => {
+  for (const url of [
+    "http://192.168.1.50:8080/v1",
+    "http://10.0.0.5/v1",
+    "http://172.16.0.1/v1",
+    "http://172.31.255.255/v1",
+    "http://100.64.0.1/v1",
+    "http://100.101.102.103/v1",
+    "http://169.254.10.10/v1",
+    "http://[fd12:3456::1]:8080/v1",
+    "http://[fe80::1]/v1",
+    "http://strix.local:8080/v1",
+    "http://radeon.lan/v1",
+    "http://box.home.arpa/v1",
+    "http://gpu.internal/v1",
+  ]) {
+    assert.equal(isPrivateNetworkBaseUrl(url), true, url);
+  }
+  for (const url of [
+    "https://api.openai.com/v1",
+    "http://172.32.0.1/v1",
+    "http://172.15.0.1/v1",
+    "http://100.128.0.1/v1",
+    "http://192.169.1.1/v1",
+    "http://8.8.8.8/v1",
+    "http://[2001:db8::1]/v1",
+    "http://local/v1",
+    "http://evil.local.example.com/v1",
+    "not a url",
+    undefined,
+  ]) {
+    assert.equal(isPrivateNetworkBaseUrl(url), false, String(url));
+  }
+});
+
+test("endpointLocation: machine, network, remote, and the MAKE0_BRAIN_LLM_LOCAL override", () => {
+  assert.equal(endpointLocation("http://localhost:11434/v1", {}), "machine");
+  assert.equal(endpointLocation("http://192.168.1.50:8080/v1", {}), "network");
+  assert.equal(endpointLocation("https://llm.example.com/v1", {}), "remote");
+  assert.equal(endpointLocation("https://strix-box.example.ts.net/v1", { MAKE0_BRAIN_LLM_LOCAL: "1" }), "network");
+  assert.equal(endpointLocation("http://localhost:11434/v1", { MAKE0_BRAIN_LLM_LOCAL: "1" }), "machine");
+  assert.equal(endpointLocation("http://10.1.2.3/v1", { MAKE0_BRAIN_LLM_LOCAL: "0" }), "remote");
+  assert.equal(endpointLocation("http://localhost:11434/v1", { MAKE0_BRAIN_LLM_LOCAL: "0" }), "remote");
+});
+
+test("resolveLlmConfig: a LAN model server works without a key and gets local behavior", () => {
+  const lan = resolveLlmConfig({ MAKE0_BRAIN_LLM_BASE_URL: "http://192.168.1.50:8080/v1" })!;
+  assert.equal(lan.apiKey, "");
+  assert.equal(lan.local, true);
+  assert.equal(lan.location, "network");
+  assert.equal(lan.model, "llama3.2");
+  assert.equal(llmSearchEnabled(lan, {}), false);
+  // A hosted provider's key is never sent to a server on the network.
+  assert.equal(resolveLlmConfig({ OPENAI_API_KEY: "sk", MAKE0_BRAIN_LLM_BASE_URL: "http://10.0.0.5/v1" })!.apiKey, "");
+  assert.equal(resolveLlmConfig({ MAKE0_BRAIN_API_KEY: "k", MAKE0_BRAIN_LLM_BASE_URL: "http://10.0.0.5/v1" })!.apiKey, "k");
+
+  const forcedHosted = resolveLlmConfig({ MAKE0_BRAIN_LLM_BASE_URL: "http://10.0.0.5/v1", MAKE0_BRAIN_LLM_LOCAL: "0" })!;
+  assert.equal(forcedHosted.local, false);
+  assert.equal(forcedHosted.location, "remote");
+  assert.equal(llmSearchEnabled(forcedHosted, {}), true);
+});
+
+test("resolveLlmConfig: a hosted base URL with no key is still used, not silently dropped", () => {
+  const keyless = resolveLlmConfig({ MAKE0_BRAIN_LLM_BASE_URL: "https://llm.example.com/v1/" })!;
+  assert.equal(keyless.apiKey, "");
+  assert.equal(keyless.baseUrl, "https://llm.example.com/v1");
+  assert.equal(keyless.local, false);
+  assert.equal(resolveLlmConfig({ MAKE0_BRAIN_LLM_LOCAL: "1" }), null);
 });
 
 test("LlmClient: no Authorization header without a key; retries without response_format", async () => {
