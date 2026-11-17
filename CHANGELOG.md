@@ -4,6 +4,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
 - **Your database is backed up before an upgrade changes it.** This release adds a column, so the first time it opens `brain.db` it copies the file to `brain.pre-upgrade-v7-<date>-<time>.db` in the same folder and prints one line saying it is upgrading and where the copy is. If the copy cannot be written, the database is left as it was. Every later release that migrates the database does the same.
 - **Fewer wrong replacements without an LLM.** A newer memory now replaces an older one only when the two say the same thing with opposite polarity. "I like dark mode" and "I dislike light mode", or tabs in Go and tabs in Python, used to archive the older memory and are now both kept. A correction replaces the one memory it matches most closely instead of every memory that shares enough words.
 - **The LLM judge sees reworded updates.** With an API key or a local model, the memories sent to the judge are now chosen by embedding similarity as well as shared words, so "I'm based in Bangalore now" is compared with "My home city is Pune".
@@ -89,7 +91,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/make0-official/brain-oss/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/make0-official/brain-oss/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/make0-official/brain-oss/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/make0-official/brain-oss/compare/v0.3.1...v0.3.2
