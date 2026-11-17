@@ -1,5 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
+  ArrowRightIcon,
   ChevronLeftIcon,
   CloseIcon,
   RefreshIcon,
@@ -30,12 +31,19 @@ const brainId = new URLSearchParams(location.search).get("brain") || "personal";
 const listUrl = `/api/memories?brain=${enc(brainId)}`;
 const VIEW_KEY = "make0-brain-board-view";
 const SEARCH_DEBOUNCE_MS = 300;
+/** Where content starts under a one-row header: 12px offset, 44px row, 4px gap. */
+const CHROME_BOTTOM_ONE_ROW = 60;
 const EMPTY_HITS: MemorySearchHit[] = [];
 const GraphView = lazy(() => import("../components/GraphView"));
 
 type ViewMode = "board" | "3d";
 
 type Draft = { mode: "new" | "edit"; id: string | null; category: string; content: string };
+
+type TimelineItem = { version: MemoryVersion; replaced: Memory[] };
+
+const TIMELINE_LINK =
+  "cursor-pointer text-xs font-semibold text-slate-500 underline hover:text-slate-900 dark:text-slate-400 dark:hover:text-white";
 
 type Overlay =
   | { kind: "writer" }
@@ -59,9 +67,23 @@ export function BoardPage() {
   latestQuery.current = query;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [versions, setVersions] = useState<MemoryVersion[]>([]);
+  /** An open memory is read-only until Edit is pressed. A new memory starts in the editor. */
+  const [editing, setEditing] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The header wraps to two rows on narrow screens, so the board and the memory panel start below its real height.
+  const headerRef = useRef<HTMLElement | null>(null);
+  const [chromeBottom, setChromeBottom] = useState(CHROME_BOTTOM_ONE_ROW);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const measure = () => setChromeBottom(Math.max(CHROME_BOTTOM_ONE_ROW, header.offsetTop + header.offsetHeight + 4));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const [view, setViewState] = useState<ViewMode>(() =>
     (new URLSearchParams(location.search).get("view") ?? localStorage.getItem(VIEW_KEY)) === "3d" ? "3d" : "board",
   );
@@ -78,6 +100,7 @@ export function BoardPage() {
   const openMemory = useCallback(
     (memory: Memory) => {
       setDraft({ mode: "edit", id: memory.id, category: memory.category, content: memory.content });
+      setEditing(false);
       setFormError(null);
       setVersions([]);
       void loadVersions(memory.id);
@@ -164,6 +187,22 @@ export function BoardPage() {
   const memories = list?.memories ?? [];
   const archived = list?.archived ?? [];
   const selected = draft?.mode === "edit" ? memories.find((memory) => memory.id === draft.id) ?? null : null;
+  const replacedBySelected = useMemo(
+    () => (selected ? archived.filter((memory) => memory.replacedBy?.id === selected.id) : []),
+    [archived, selected],
+  );
+  // Edits of this memory, newest first. Each carries the older memories that edit replaced.
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const oldestFirst = [...versions].sort((a, b) => a.versionNumber - b.versionNumber);
+    const items = oldestFirst.map((version) => ({ version, replaced: [] as Memory[] }));
+    for (const memory of replacedBySelected) {
+      // A replacement is archived right after the write that caused it: the latest version at or before that time.
+      const at = memory.deletedAt ?? memory.updatedAt;
+      const cause = [...items].reverse().find((item) => item.version.createdAt <= at) ?? items[0];
+      cause?.replaced.push(memory);
+    }
+    return items.reverse();
+  }, [versions, replacedBySelected]);
   const trimmedQuery = query.trim();
   const searchExact = searchResult?.query === trimmedQuery ? searchResult : null;
   const visibleHits = !trimmedQuery ? null : (searchResult?.hits ?? EMPTY_HITS);
@@ -178,6 +217,7 @@ export function BoardPage() {
 
   const compose = (category: string) => {
     setDraft({ mode: "new", id: null, category: category.trim(), content: "" });
+    setEditing(true);
     setFormError(null);
     setVersions([]);
   };
@@ -215,6 +255,22 @@ export function BoardPage() {
     }
   };
 
+  const cancelEdit = () => {
+    if (selected && draft) setDraft({ ...draft, category: selected.category, content: selected.content });
+    setEditing(false);
+    setFormError(null);
+  };
+
+  const recoverReplaced = async (memory: Memory) => {
+    try {
+      await api("POST", `/api/memories/${enc(memory.id)}/restore`);
+      await reload(draft?.id ?? null);
+      toast("Memory recovered");
+    } catch (caught) {
+      setFormError(caught instanceof Error ? caught.message : "Couldn’t recover that memory.");
+    }
+  };
+
   const restoreVersion = async (versionNumber: number) => {
     if (!draft?.id) return;
     if (!confirm(`Make version ${versionNumber} the current text? Later versions stay in the history.`)) return;
@@ -228,10 +284,10 @@ export function BoardPage() {
   };
 
   return (
-    <div className="relative h-full overflow-hidden">
+    <div className="relative h-full overflow-hidden" style={{ "--chrome-bottom": `${chromeBottom}px` } as CSSProperties}>
       <div className="board-grid pointer-events-none absolute inset-0" aria-hidden />
 
-      <header className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center gap-2">
+      <header ref={headerRef} className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="flex h-9 min-w-0 items-center gap-1.5 rounded-full border border-slate-300/80 bg-[#fbfaf8]/90 pr-3 pl-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md dark:border-white/10 dark:bg-[#0d1117]/90">
             <a
@@ -250,7 +306,7 @@ export function BoardPage() {
             ) : null}
           </div>
           {memories.length > 0 ? (
-            <div className="hidden h-9 shrink-0 items-center rounded-full border border-slate-300/80 bg-[#fbfaf8]/90 px-3 text-[11px] font-medium whitespace-nowrap shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md lg:flex dark:border-white/10 dark:bg-[#0d1117]/90">
+            <div className="hidden h-9 shrink-0 items-center rounded-full border border-slate-300/80 bg-[#fbfaf8]/90 px-3 text-[11px] font-medium whitespace-nowrap shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md xl:flex dark:border-white/10 dark:bg-[#0d1117]/90">
               {plural(categoryCount, "category", "categories")}
               <span className="mx-1.5 text-slate-400">·</span>
               {plural(memories.length, "memory", "memories")}
@@ -279,7 +335,8 @@ export function BoardPage() {
             ))}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        {/* Below lg this group is its own full-width row, and search takes the space the buttons leave. */}
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 max-lg:w-full">
           <MemorySearch
             query={query}
             searching={searching && !searchExact}
@@ -301,9 +358,11 @@ export function BoardPage() {
           <button
             type="button"
             onClick={() => setOverlay({ kind: "sync" })}
-            className="h-9 cursor-pointer rounded-full border border-slate-300/80 bg-[#fbfaf8]/90 px-3 text-xs font-semibold text-slate-950 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md hover:bg-white dark:border-white/10 dark:bg-[#0d1117]/90 dark:text-white dark:hover:bg-[#161b22]"
+            aria-label="Connect, import, export"
+            className="h-9 shrink-0 cursor-pointer rounded-full border border-slate-300/80 bg-[#fbfaf8]/90 px-3 text-xs font-semibold whitespace-nowrap text-slate-950 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur-md hover:bg-white dark:border-white/10 dark:bg-[#0d1117]/90 dark:text-white dark:hover:bg-[#161b22]"
           >
-            Connect / import / export
+            <span className="sm:hidden">Connect</span>
+            <span className="max-sm:hidden">Connect / import / export</span>
           </button>
           <ChromeButton aria-label="Refresh memories" onClick={() => void reload(draft?.id ?? null)}>
             <RefreshIcon />
@@ -334,7 +393,7 @@ export function BoardPage() {
           )}
         </main>
       ) : (
-        <main className="absolute inset-0 flex items-center gap-3 overflow-x-auto overflow-y-hidden px-4 pt-14 pb-20">
+        <main className="absolute inset-0 flex items-center gap-3 overflow-x-auto overflow-y-hidden px-4 pt-[var(--chrome-bottom)] pb-20">
           {loadError ? (
             <StatusPill>Couldn’t load Brain</StatusPill>
           ) : !list ? (
@@ -375,7 +434,7 @@ export function BoardPage() {
       )}
 
       {draft ? (
-        <aside className="absolute top-[60px] right-3 bottom-3 z-[6] flex w-[min(24rem,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-slate-300/80 bg-[#fbfaf8] shadow-[0_12px_32px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#0d1117]">
+        <aside className="absolute top-[var(--chrome-bottom)] right-3 bottom-3 z-[6] flex w-[min(24rem,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-slate-300/80 bg-[#fbfaf8] shadow-[0_12px_32px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#0d1117]">
           <header className="flex items-start gap-2 border-b border-black/[0.08] px-4 pt-3.5 pb-3 dark:border-white/10">
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-sm font-semibold text-slate-950 dark:text-white">{draft.mode === "new" ? "New memory" : selected?.category ?? "Memory"}</h2>
@@ -407,75 +466,142 @@ export function BoardPage() {
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <form onSubmit={(event) => void save(event)} className="grid gap-1 p-4">
-              <label htmlFor="edit-category" className="text-[11px] text-slate-500 dark:text-slate-400">
-                Category
-              </label>
-              <input
-                id="edit-category"
-                required
-                maxLength={80}
-                value={draft.category}
-                onChange={(event) => setDraft({ ...draft, category: event.target.value })}
-                className="mb-3 h-9 rounded-xl border border-slate-300/80 bg-white px-2.5 text-sm text-slate-950 outline-none focus:border-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:focus:border-white"
-              />
-              <div className="flex items-center justify-between">
-                <label htmlFor="edit-content" className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Memory
+            {editing ? (
+              <form onSubmit={(event) => void save(event)} className="grid gap-1 p-4">
+                <label htmlFor="edit-category" className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Category
                 </label>
-                <button type="button" className="cursor-pointer text-xs font-semibold text-slate-500 underline hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" onClick={() => setOverlay({ kind: "writer" })}>
-                  Larger writer
-                </button>
-              </div>
-              <textarea
-                id="edit-content"
-                required
-                autoFocus={draft.mode === "new"}
-                maxLength={4000}
-                value={draft.content}
-                onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-                className="mb-3 min-h-[140px] resize-y rounded-xl border border-slate-300/80 bg-white p-2.5 text-sm leading-relaxed text-slate-950 outline-none focus:border-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:focus:border-white"
-              />
-              <div className="flex gap-2">
-                <Button type="submit" className="flex-1" disabled={saving}>
-                  {saving ? "Saving…" : draft.mode === "new" ? "Add memory" : "Save"}
-                </Button>
-                {draft.mode === "edit" ? (
+                <input
+                  id="edit-category"
+                  required
+                  maxLength={80}
+                  value={draft.category}
+                  onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+                  className="mb-3 h-9 rounded-xl border border-slate-300/80 bg-white px-2.5 text-sm text-slate-950 outline-none focus:border-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:focus:border-white"
+                />
+                <div className="flex items-center justify-between">
+                  <label htmlFor="edit-content" className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Memory
+                  </label>
+                  <button type="button" className="cursor-pointer text-xs font-semibold text-slate-500 underline hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" onClick={() => setOverlay({ kind: "writer" })}>
+                    Larger writer
+                  </button>
+                </div>
+                <textarea
+                  id="edit-content"
+                  required
+                  autoFocus
+                  maxLength={4000}
+                  value={draft.content}
+                  onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+                  className="mb-3 min-h-[140px] resize-y rounded-xl border border-slate-300/80 bg-white p-2.5 text-sm leading-relaxed text-slate-950 outline-none focus:border-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:focus:border-white"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" className="flex-1" disabled={saving}>
+                    {saving ? "Saving…" : draft.mode === "new" ? "Add memory" : "Save"}
+                  </Button>
+                  {draft.mode === "edit" ? (
+                    <Button variant="ghost" onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="mt-2">
+                  <ErrorText>{formError}</ErrorText>
+                </div>
+              </form>
+            ) : (
+              <section className="p-4">
+                <p className="mb-1 text-[11px] text-slate-500 dark:text-slate-400">Current memory</p>
+                <div className="max-h-[45vh] overflow-y-auto rounded-xl border border-black/[0.06] bg-white p-3 text-sm leading-relaxed break-words whitespace-pre-wrap text-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-white">
+                  {selected?.content ?? draft.content}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button className="flex-1" onClick={() => setEditing(true)}>
+                    Edit
+                  </Button>
                   <Button variant="ghost" className="text-red-700 dark:text-red-400" onClick={() => void remove()}>
                     Delete
                   </Button>
-                ) : null}
-              </div>
-              <div className="mt-2">
-                <ErrorText>{formError}</ErrorText>
-              </div>
-            </form>
-            {draft.mode === "edit" && versions.length > 0 ? (
+                </div>
+                <div className="mt-2">
+                  <ErrorText>{formError}</ErrorText>
+                </div>
+              </section>
+            )}
+            {draft.mode === "edit" && timeline.length > 0 ? (
               <section className="border-t border-black/[0.08] p-4 dark:border-white/10">
-                <h3 className="mb-1 text-xs font-semibold text-slate-950 dark:text-white">Versions</h3>
-                {versions.map((version) => (
-                  <article key={version.versionNumber} className="flex items-start justify-between gap-3 border-t border-black/[0.06] py-3 first-of-type:border-t-0 dark:border-white/[0.08]">
-                    <div className="min-w-0">
-                      <p className={cn("mb-1 flex flex-wrap items-center gap-x-1 text-[11px]", version.isCurrent ? "font-semibold text-slate-950 dark:text-white" : "text-slate-500 dark:text-slate-400")}>
-                        v{version.versionNumber} ·
-                        <OriginMark addedBy={version.writtenBy} writerName={version.writerName} className="" />
-                        {writerLabel(version.writtenBy, version.writerName)} · {ago(version.createdAt)}
-                        {version.isCurrent ? (
-                          <span className="ml-1.5 rounded-full bg-slate-950 px-1.5 py-px text-[10px] font-bold text-white dark:bg-white dark:text-slate-950">Current</span>
-                        ) : null}
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h3 className="text-xs font-semibold text-slate-950 dark:text-white">History</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {plural(versions.length, "version", "versions")}
+                    {versions.length > 1 ? ", newest first" : ""}
+                  </p>
+                </div>
+                <ol className="ml-1.5 border-l border-black/10 dark:border-white/15">
+                  {timeline.map((item) => (
+                    <li key={`v${item.version.versionNumber}`} className="relative pb-5 pl-4 last:pb-0">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "absolute top-[4px] -left-[5px] size-[9px] rounded-full border-2",
+                          item.version.isCurrent
+                            ? "border-slate-950 bg-slate-950 dark:border-white dark:bg-white"
+                            : "border-slate-400 bg-[#fbfaf8] dark:border-slate-500 dark:bg-[#0d1117]",
+                        )}
+                      />
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-950 dark:text-white">
+                          Version {item.version.versionNumber}
+                          {item.version.isCurrent ? (
+                            <span className="rounded-full bg-slate-950 px-1.5 py-px text-[10px] font-bold text-white dark:bg-white dark:text-slate-950">Current</span>
+                          ) : null}
+                        </p>
+                        <p className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{ago(item.version.createdAt)}</p>
+                      </div>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        <OriginMark addedBy={item.version.writtenBy} writerName={item.version.writerName} className="size-4" />
+                        {item.version.versionNumber === 1 ? "Added by" : "Edited by"} {writerLabel(item.version.writtenBy, item.version.writerName)}
                       </p>
-                      <p className="line-clamp-3 text-xs leading-snug text-slate-700 dark:text-slate-300">{version.content}</p>
-                      <button type="button" className="mt-1.5 cursor-pointer text-xs font-semibold text-slate-500 underline hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" onClick={() => setOverlay({ kind: "version", version })}>
-                        View
-                      </button>
-                    </div>
-                    {versions.length > 1 && !version.isCurrent ? (
-                      <Button size="sm" className="h-7 px-2.5 text-[11px]" onClick={() => void restoreVersion(version.versionNumber)}>
-                        Make current
-                      </Button>
-                    ) : null}
-                  </article>
-                ))}
+                      <p
+                        className={cn(
+                          "mt-1.5 line-clamp-4 text-xs leading-snug break-words whitespace-pre-wrap",
+                          item.version.isCurrent ? "text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-400",
+                        )}
+                      >
+                        {item.version.content}
+                      </p>
+                      {item.version.isCurrent ? null : (
+                        <div className="mt-1.5 flex gap-3">
+                          <button type="button" className={TIMELINE_LINK} onClick={() => setOverlay({ kind: "version", version: item.version })}>
+                            View full text
+                          </button>
+                          <button type="button" className={TIMELINE_LINK} onClick={() => void restoreVersion(item.version.versionNumber)}>
+                            Make current
+                          </button>
+                        </div>
+                      )}
+                      {item.replaced.length > 0 ? (
+                        <ul className="mt-2.5 ml-1 grid gap-2.5 border-l-2 border-amber-400/70 pl-3 dark:border-amber-400/50">
+                          {item.replaced.map((memory) => (
+                            <li key={memory.id}>
+                              <p className="flex flex-wrap items-center gap-x-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                <span className="font-semibold text-amber-700 dark:text-amber-300">This version replaced</span>
+                                a memory from
+                                <OriginMark addedBy={memory.updatedBy} writerName={memory.writerName} className="size-4" />
+                                {writerLabel(memory.updatedBy, memory.writerName)}
+                              </p>
+                              <p className="mt-1 line-clamp-3 text-xs leading-snug text-slate-500 line-through decoration-slate-400/60 dark:text-slate-400">{memory.content}</p>
+                              <button type="button" className={cn(TIMELINE_LINK, "mt-1")} title="Bring it back. Both memories stay." onClick={() => void recoverReplaced(memory)}>
+                                Recover
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
               </section>
             ) : null}
           </div>
@@ -500,6 +626,12 @@ export function BoardPage() {
         <BinModal
           archived={archived}
           onClose={() => setOverlay(null)}
+          onOpenMemory={(id) => {
+            const memory = memories.find((item) => item.id === id);
+            if (!memory) return;
+            setOverlay(null);
+            openMemory(memory);
+          }}
           onChanged={async (recoveredId) => {
             await reload(recoveredId);
             if (recoveredId) setOverlay(null);
@@ -554,7 +686,7 @@ function MemorySearch({
   return (
     <label
       className={cn(
-        "flex h-11 w-[min(18rem,calc(100vw-8rem))] min-w-0 items-center gap-2 rounded-full border bg-white pr-3 pl-3.5 shadow-[0_16px_40px_rgba(15,23,42,0.14)] focus-within:ring-2 dark:bg-[#0d1117]",
+        "flex h-11 min-w-0 flex-1 items-center gap-2 lg:w-56 lg:flex-none xl:w-72 rounded-full border bg-white pr-3 pl-3.5 shadow-[0_16px_40px_rgba(15,23,42,0.14)] focus-within:ring-2 dark:bg-[#0d1117]",
         active
           ? "border-sky-500 focus-within:ring-sky-500/20 dark:border-cyan-300 dark:focus-within:ring-cyan-300/20"
           : "border-slate-400/90 focus-within:border-slate-950 focus-within:ring-slate-950/10 dark:border-white/25 dark:focus-within:border-white dark:focus-within:ring-white/15",
@@ -788,10 +920,12 @@ function VectorBlock({ embedding, error }: { embedding: Embedding | null; error:
 function BinModal({
   archived,
   onClose,
+  onOpenMemory,
   onChanged,
 }: {
   archived: Memory[];
   onClose: () => void;
+  onOpenMemory: (id: string) => void;
   onChanged: (recoveredId: string | null) => Promise<void>;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -826,10 +960,32 @@ function BinModal({
       ) : (
         archived.map((memory) => (
           <article key={memory.id} className="border-t border-black/[0.06] py-3 first:border-t-0 first:pt-0 dark:border-white/[0.08]">
-            <h3 className="mb-1 text-xs font-semibold text-slate-950 dark:text-white">{memory.category}</h3>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <h3 className="min-w-0 truncate text-xs font-semibold text-slate-950 dark:text-white">{memory.category}</h3>
+              <p className="flex shrink-0 items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-px text-[10px] font-bold",
+                    memory.replacedBy
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300"
+                      : "bg-black/[0.05] text-slate-600 dark:bg-white/[0.08] dark:text-slate-300",
+                  )}
+                >
+                  {memory.replacedBy ? "Replaced" : "Deleted"}
+                </span>
+                {memory.deletedAt ? ago(memory.deletedAt) : null}
+              </p>
+            </div>
             <p className="text-[13px] leading-snug text-slate-700 dark:text-slate-300">{memory.content}</p>
+            {memory.replacedBy ? <ReplacedBy replacement={memory.replacedBy} onOpen={onOpenMemory} /> : null}
             <div className="mt-2 flex gap-2">
-              <Button size="sm" variant="ghost" disabled={busy === memory.id} onClick={() => void recover(memory)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy === memory.id}
+                title={memory.replacedBy ? "Bring it back. The memory that replaced it stays too." : undefined}
+                onClick={() => void recover(memory)}
+              >
                 Recover
               </Button>
               <Button size="sm" variant="ghost" className="text-red-700 dark:text-red-400" disabled={busy === memory.id} onClick={() => void purge(memory)}>
@@ -840,6 +996,29 @@ function BinModal({
         ))
       )}
     </Modal>
+  );
+}
+
+/** The newer memory that took an archived one's place. Opens it on the board while it is still live. */
+function ReplacedBy({ replacement, onOpen }: { replacement: NonNullable<Memory["replacedBy"]>; onOpen: (id: string) => void }) {
+  const body = (
+    <>
+      <span className="mb-1 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <ArrowRightIcon size={12} className="shrink-0" />
+        <span className="font-semibold text-slate-700 dark:text-slate-200">Replaced by</span>
+        <OriginMark addedBy={replacement.updatedBy} writerName={replacement.writerName} className="size-4" />
+        <span className="min-w-0 truncate">{writerLabel(replacement.updatedBy, replacement.writerName)}</span>
+        {replacement.archived ? <span className="shrink-0">· also archived</span> : <span className="ml-auto shrink-0 font-semibold text-slate-700 dark:text-slate-200">Open</span>}
+      </span>
+      <span className="line-clamp-2 block text-[13px] leading-snug text-slate-900 dark:text-slate-100">{replacement.content}</span>
+    </>
+  );
+  const box = "mt-2 block w-full rounded-xl border border-black/[0.06] bg-black/[0.025] px-3 py-2 text-left dark:border-white/10 dark:bg-white/[0.04]";
+  if (replacement.archived) return <div className={box}>{body}</div>;
+  return (
+    <button type="button" onClick={() => onOpen(replacement.id)} className={cn(box, "cursor-pointer hover:border-black/15 hover:bg-black/[0.045] dark:hover:border-white/20 dark:hover:bg-white/[0.07]")}>
+      {body}
+    </button>
   );
 }
 

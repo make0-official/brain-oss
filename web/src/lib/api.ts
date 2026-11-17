@@ -27,6 +27,9 @@ export type Memory = {
   edited: boolean;
   updatedAt: string;
   createdAt: string;
+  deletedAt?: string | null;
+  /** Archived memories only: the memory that replaced this one. */
+  replacedBy?: { id: string; content: string; updatedBy: string; writerName: string | null; archived: boolean } | null;
 };
 
 export type MemoryEdge = {
