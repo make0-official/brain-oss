@@ -17,6 +17,15 @@ export type ViewMemory = {
   edited: boolean;
   archived: boolean;
   deletedAt: string | null;
+  /** The memory that replaced this archived one. Null when it was deleted by hand or the replacement is gone. */
+  replacedBy: {
+    id: string;
+    content: string;
+    updatedBy: MemoryAddedBy;
+    writerName: string | null;
+    /** The replacement was archived too, so it cannot be opened on the board. */
+    archived: boolean;
+  } | null;
 };
 
 export type ViewList = {
@@ -56,7 +65,21 @@ export function toViewMemory(memory: Memory): ViewMemory {
     edited: wasEdited(memory),
     archived: Boolean(memory.deletedAt),
     deletedAt: memory.deletedAt,
+    replacedBy: null,
   };
+}
+
+const REPLACED_BY_PREVIEW_CHARS = 280;
+
+function toArchivedViewMemory(store: BrainStore, memory: Memory): ViewMemory {
+  const replacement = memory.supersededBy ? store.getMemory(memory.supersededBy, { includeArchived: true }) : undefined;
+  if (!replacement) return toViewMemory(memory);
+  const content =
+    replacement.content.length > REPLACED_BY_PREVIEW_CHARS
+      ? `${replacement.content.slice(0, REPLACED_BY_PREVIEW_CHARS)}…`
+      : replacement.content;
+  const { id, updatedBy, writerName, archived } = toViewMemory(replacement);
+  return { ...toViewMemory(memory), replacedBy: { id, content, updatedBy, writerName, archived } };
 }
 
 /** Live memories, plus archived ones the page can recover. Embeddings stay in the database. */
@@ -69,7 +92,7 @@ export function buildMemoryList(store: BrainStore, brainId = PERSONAL_BRAIN_ID):
     description: brain?.description ?? null,
     emoji: brain?.emoji ?? null,
     memories: store.listMemories({ brainId }).map(toViewMemory),
-    archived: store.listArchivedMemories(brainId).map(toViewMemory),
+    archived: store.listArchivedMemories(brainId).map((memory) => toArchivedViewMemory(store, memory)),
     edges: store.listEdges(brainId).map(({ id, fromMemoryId, toMemoryId, relationshipType, weight }) => ({
       id,
       fromMemoryId,

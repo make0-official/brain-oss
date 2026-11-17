@@ -5,7 +5,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { test } from "vitest";
 import { BrainStore, BrainStoreError } from "../src/store/store";
-import { SCHEMA_VERSION } from "../src/store/schema";
+import { migrate, SCHEMA_VERSION } from "../src/store/schema";
 
 function newStore() {
   return new BrainStore(":memory:");
@@ -158,10 +158,23 @@ test("upgrades a version-3 database and keeps memories on personal", () => {
   db.pragma("user_version = 3");
   db.close();
 
-  const store = new BrainStore(file);
+  const upgrades: Array<{ from: number; to: number; backupPath: string }> = [];
+  const store = new BrainStore(file, { onUpgrade: (upgrade) => upgrades.push(upgrade) });
   const [memory] = store.listMemories();
   assert.equal(memory.content, "Likes tea");
   assert.equal(memory.brainId, "personal");
+  assert.equal(memory.supersededBy, null);
+
+  // The file is copied before any migration runs, and the caller is told where.
+  assert.equal(upgrades.length, 1);
+  assert.equal(upgrades[0].from, 3);
+  assert.equal(upgrades[0].to, SCHEMA_VERSION);
+  assert.match(path.basename(upgrades[0].backupPath), /\.pre-upgrade-v3-\d{8}-\d{6}(-\d+)?\.db$/);
+  const backup = new Database(upgrades[0].backupPath, { readonly: true });
+  assert.equal(backup.pragma("user_version", { simple: true }), 3);
+  assert.equal((backup.prepare("SELECT content FROM memories").get() as { content: string }).content, "Likes tea");
+  backup.close();
+  fs.rmSync(upgrades[0].backupPath, { force: true });
   assert.equal(store.getBrain("personal")?.name, "Personal brain");
   assert.equal(store.db.pragma("user_version", { simple: true }), SCHEMA_VERSION);
   store.close();
@@ -170,20 +183,44 @@ test("upgrades a version-3 database and keeps memories on personal", () => {
   fs.rmSync(`${file}-shm`, { force: true });
 });
 
+test("opening a current or new database makes no backup", () => {
+  const file = path.join(os.tmpdir(), `make0-brain-fresh-${process.pid}-${Date.now()}.db`);
+  const upgrades: unknown[] = [];
+  new BrainStore(file, { onUpgrade: (upgrade) => upgrades.push(upgrade) }).close();
+  new BrainStore(file, { onUpgrade: (upgrade) => upgrades.push(upgrade) }).close();
+  assert.deepEqual(upgrades, []);
+  for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
+});
+
+test("a database is not upgraded when the backup cannot be written", () => {
+  const db = new Database(":memory:");
+  migrate(db);
+  db.exec("ALTER TABLE memories DROP COLUMN superseded_by");
+  db.pragma(`user_version = ${SCHEMA_VERSION - 1}`);
+
+  const filename = path.join(os.tmpdir(), `make0-missing-${process.pid}-${Date.now()}`, "brain.db");
+  assert.throws(() => migrate(db, { filename }), /Could not back up .* The database was not changed/);
+  assert.equal(db.pragma("user_version", { simple: true }), SCHEMA_VERSION - 1);
+  db.close();
+});
+
 test("grants saved before agent_access keep their brains after migrating", () => {
   const file = path.join(os.tmpdir(), `make0-brain-access-${process.pid}-${Date.now()}.db`);
   const before = new BrainStore(file);
   const work = before.createBrain({ name: "Work" });
   before.setClientBrains("cursor", [work.id]);
-  before.db.exec("DROP TABLE agent_access");
-  before.db.pragma(`user_version = ${SCHEMA_VERSION - 1}`);
+  // Rewind to just before the agent_access migration (the seventh).
+  before.db.exec("DROP TABLE agent_access; ALTER TABLE memories DROP COLUMN superseded_by;");
+  before.db.pragma("user_version = 6");
   before.close();
 
-  const store = new BrainStore(file);
+  let backupPath = "";
+  const store = new BrainStore(file, { onUpgrade: (upgrade) => (backupPath = upgrade.backupPath) });
   assert.deepEqual(store.listConfiguredClientIds(), ["cursor"]);
   assert.deepEqual(store.brainsVisibleToClient("cursor").map((brain) => brain.id), [work.id]);
   assert.deepEqual(store.brainsVisibleToClient("codex").map((brain) => brain.id), ["personal"]);
   store.close();
+  fs.rmSync(backupPath, { force: true });
   for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
 });
 

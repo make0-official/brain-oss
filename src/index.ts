@@ -1,5 +1,12 @@
 export { Brain } from "./brain";
-export type { AddMemoryInput, AddMemoryResult, SearchHit, SearchOptions } from "./brain";
+export type {
+  AddMemoryInput,
+  AddMemoryResult,
+  SearchHit,
+  SearchOptions,
+  UpdateMemoryOptions,
+  UpdateMemoryResult,
+} from "./brain";
 export { brainHome, defaultDbPath, openBrain } from "./config";
 export { HashingEmbeddingProvider, LexicalPairScorer } from "./embeddings/hashing";
 export { LocalCrossEncoder, LocalEmbeddingProvider } from "./embeddings/local";

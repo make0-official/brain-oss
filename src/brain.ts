@@ -57,6 +57,17 @@ export type AddMemoryResult = {
   supersededIds: string[];
 };
 
+export type UpdateMemoryOptions = {
+  /** Same modes as `AddMemoryOptions.supersede`. Runs only when the text changes. Default `full`. */
+  supersede?: "full" | "heuristic" | "none";
+};
+
+export type UpdateMemoryResult = {
+  memory: Memory;
+  /** Other memories the edited text replaced. They are archived, not deleted. */
+  supersededIds: string[];
+};
+
 export type SearchOptions = {
   limit?: number;
   kind?: MemoryKind;
@@ -178,10 +189,9 @@ export class Brain {
       supersede === "none"
         ? { archiveIds: [] as string[], mergedContent: undefined }
         : await resolveSupersession(memory, this.store.listMemories({ brainId }), {
-            pairScorer: this.pairScorer,
             judge: supersede === "full" ? this.llm.judge : undefined,
           });
-    for (const id of archiveIds) this.store.archiveMemory(id, "make0");
+    for (const id of archiveIds) this.store.archiveMemory(id, "make0", memory.id);
     if (mergedContent && mergedContent !== memory.content) {
       // Same as cloud: the merge is a Make0 write on top of the client's version.
       const merged = { ...memory, content: mergedContent };
@@ -204,7 +214,23 @@ export class Brain {
     updates: Partial<Pick<Memory, "content" | "category" | "kind" | "entityType" | "confidence">>,
     writer: MemoryOriginProvider,
     writerName?: string | null,
+    options: UpdateMemoryOptions = {},
   ): Promise<Memory | undefined> {
+    return (await this.updateMemoryWithResult(id, updates, writer, writerName, options))?.memory;
+  }
+
+  /**
+   * `updateMemory`, plus the memories the new text replaced. An edit that now
+   * contradicts or restates another memory archives that one, as a new memory
+   * would. The edited text is kept as written: a merge verdict does not rewrite it.
+   */
+  async updateMemoryWithResult(
+    id: string,
+    updates: Partial<Pick<Memory, "content" | "category" | "kind" | "entityType" | "confidence">>,
+    writer: MemoryOriginProvider,
+    writerName?: string | null,
+    options: UpdateMemoryOptions = {},
+  ): Promise<UpdateMemoryResult | undefined> {
     const existing = this.store.getMemory(id);
     if (!existing) return undefined;
     const metadata = mergeMemoryWriterMetadata(existing.metadata, null);
@@ -225,8 +251,22 @@ export class Brain {
       next.embeddingModel = embedded?.embeddingModel ?? null;
     }
     const memory = this.store.updateMemory(id, next);
-    if (memory && textChanged) ensureMemoryGraphLinks(this.store, { brainId: memory.brainId });
-    return memory;
+    if (!memory) return undefined;
+
+    const supersede = options.supersede ?? "full";
+    let supersededIds: string[] = [];
+    if (memory.content !== existing.content && supersede !== "none") {
+      // The editor decides what may be archived, not whoever first saved the memory.
+      const asWritten = { ...memory, originProvider: writer };
+      ({ archiveIds: supersededIds } = await resolveSupersession(
+        asWritten,
+        this.store.listMemories({ brainId: memory.brainId }),
+        { judge: supersede === "full" ? this.llm.judge : undefined },
+      ));
+      for (const archivedId of supersededIds) this.store.archiveMemory(archivedId, "make0", memory.id);
+    }
+    if (textChanged) ensureMemoryGraphLinks(this.store, { brainId: memory.brainId });
+    return { memory, supersededIds };
   }
 
   deleteMemory(id: string, writer: MemoryOriginProvider): boolean {

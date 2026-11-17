@@ -48,6 +48,7 @@ Make0 Brain is one memory that all of them share:
 
 - **Tell one agent, every agent knows.** A fact saved from Cursor is found by Claude Code in the next session.
 - **Nothing is overwritten silently.** Every edit, from any agent, is kept as a version with who wrote it and when.
+- **Contradictions are resolved.** When a new memory reverses an older one, the newer one wins and the older one is archived, on every install with no key. Connect a local or hosted LLM and it gets better: it also catches reworded updates and changed values, and merges duplicates. See [Context stays consistent](#context-stays-consistent).
 - **It stays yours.** One SQLite file on your machine, MIT licensed, exportable to plain Markdown.
 
 <p align="center">
@@ -218,8 +219,9 @@ Every memory an app retrieves or writes is counted per app and per brain, with a
 
 ### Context stays consistent
 
-- **Contradictions replace older facts.** If Cursor saves "I don't like dark mode in my editor" after Claude saved "I like dark mode in my editor", the newer memory wins and the older one is archived, with its history intact.
-- **Duplicates merge (with an API key or a local model).** An LLM judge compares close matches and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts. Without one, duplicates are kept rather than guessed at.
+- **Contradictions replace older facts.** If Cursor saves "I don't like dark mode in my editor" after Claude saved "I like dark mode in my editor", the newer memory wins and the older one is archived, with its history intact. The archived memory records which memory replaced it: the recycle bin shows the replacement, and an open memory lists what it replaced in its History timeline, with a Recover link. Editing a memory with `update_memory` is checked the same way.
+- **Without an LLM, only clear reversals are replaced.** The two memories must say the same thing with opposite polarity, so "I like dark mode" and "I dislike light mode" both stay. A memory saved as a correction replaces the one memory it matches most closely. A changed value, such as "I live in Pune" then "I live in Bangalore", is kept as two memories.
+- **Changed values and duplicates are handled with an API key or a local model.** An LLM judge compares the closest memories, found by meaning as well as by shared words, so "I'm based in Bangalore now" is compared with "My home city is Pune". It replaces contradictions and merges restatements into one memory. The merged text may only use words from the two originals, so it cannot invent facts.
 - **Related memories are linked.** Similar memories get links automatically, and search follows them up to two hops, so asking about a project also surfaces the decisions tied to it.
 
 Switch a brain to **3D** to orbit and zoom through it: categories branch from the center, and each memory sits on its category.
@@ -258,7 +260,7 @@ Search results include `versionCount`. When it is greater than 1, an agent can c
 | Action                                   | What happens                                           |
 | ---------------------------------------- | ------------------------------------------------------ |
 | `update_memory` or an edit in the viewer | A new current version. Older versions stay.            |
-| A contradicting or merged memory         | The older memory is archived with all its versions.    |
+| A contradicting or merged memory         | The older memory is archived with all its versions, and records what replaced it. |
 | `delete_memory`                          | Archived: hidden from search and reads, versions kept. |
 | Re-import of an edited note              | A new version of that memory, not a duplicate.         |
 | Re-import of a note you deleted          | Skipped. Deleted stays deleted.                        |
@@ -379,7 +381,7 @@ The Markdown export imports back in. The JSON bundle includes archived memories 
 
 ## Optional API key or local model
 
-Nothing needs a key. With one, Make0 Brain also merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`. A model running on your own machine can do the same work without a key.
+Nothing needs a key. With one, Make0 Brain resolves more memory contradictions (reworded updates and changed values, not only clear reversals), merges duplicate memories, picks better categories, filters search results with an LLM, and can `import --extract`. A model running on your own machine can do the same work without a key.
 
 Copy `.env.example` to `.env` in this folder, or to `~/.make0/.env` so every app shares one file:
 
@@ -479,7 +481,7 @@ A memory is text, and an agent can read it as an instruction. A web page or a fi
 
 ### Backups
 
-Make0 Brain does not back up your database by itself. Copy one of these somewhere safe, and do it before you upgrade:
+Make0 Brain backs up your database only when an upgrade changes its format (see [Upgrades](#upgrades)). For a regular backup, copy one of these somewhere safe:
 
 ```bash
 npx @make0-ai/brain export --json ~/make0-brain-backup.json   # every memory, version, and link
@@ -490,7 +492,9 @@ Copy `brain.db` directly only when no app is running, or you may miss recent wri
 
 ### Upgrades
 
-Upgrading does not need a new `init`. Agents run the server through `npx`, so they pick up a new release the next time they start. If you moved to a fixed global install (see [What leaves your machine](#what-leaves-your-machine)), nothing updates until you install a newer version yourself. If `npx @make0-ai/brain --version` shows an old version, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories. Older versions are not tested against a migrated database, so back up before upgrading if you might go back.
+Upgrading does not need a new `init`. Agents run the server through `npx`, so they pick up a new release the next time they start. If you moved to a fixed global install (see [What leaves your machine](#what-leaves-your-machine)), nothing updates until you install a newer version yourself. If `npx @make0-ai/brain --version` shows an old version, a global install is shadowing npx: `npm install -g @make0-ai/brain@latest`. On first open, a new version migrates `brain.db` in place, one transaction per step, so a failed step leaves the database as it was. Migrations add tables and columns and fill in new fields; they do not remove your memories.
+
+Before a migration runs, Make0 Brain copies the database to a file next to it, named for the old format and the time, such as `~/.make0/brain.pre-upgrade-v7-20261117-101530.db`, and prints one line saying it is upgrading and where the copy is. In an agent, that line goes to the MCP server log. If the copy cannot be written, the database is not upgraded and the command stops with an error. The copies are never deleted for you, so remove old ones when you no longer need them. Older versions are not tested against a migrated database: to go back, stop your apps and copy the backup over `~/.make0/brain.db`.
 
 ### Requirements and status
 

@@ -86,6 +86,8 @@ export type Memory = {
   lastWrittenVia: MemoryOriginProvider;
   deletedAt: string | null;
   deletedVia: MemoryOriginProvider | null;
+  /** The memory that replaced this one when a contradiction or merge archived it. */
+  supersededBy: string | null;
   discoveredAt: string;
   createdAt: string;
   updatedAt: string;

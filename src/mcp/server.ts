@@ -306,7 +306,7 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     {
       title: "Add memory",
       description:
-        "Save a new Brain memory when the user explicitly asks to remember, save, or store something. Store either one singular fact or one short Markdown mini-doc (headings, lists, bold, links, code, and Mermaid diagrams) up to about 800 words. Use one memory for one coherent fact or note; do not paste a long document. A new memory that contradicts or restates an older one replaces it; the older one stays in version history.",
+        "Save a new Brain memory when the user explicitly asks to remember, save, or store something. Store either one singular fact or one short Markdown mini-doc (headings, lists, bold, links, code, and Mermaid diagrams) up to about 800 words. Use one memory for one coherent fact or note; do not paste a long document. A new memory that contradicts or restates an older one replaces it; the older one is archived with its versions and listed in replacedMemoryIds.",
       inputSchema: {
         brain: brainIdSchema,
         content: memoryContentSchema,
@@ -355,7 +355,7 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
     {
       title: "Update memory",
       description:
-        "Update an existing Brain memory when the user asks to correct or change it. The new content can be a singular fact or a short Markdown mini-doc (headings, lists, bold, links, code, and Mermaid diagrams) up to about 800 words. New content replaces the old content, and the previous version is kept.",
+        "Update an existing Brain memory when the user asks to correct or change it. The new content can be a singular fact or a short Markdown mini-doc (headings, lists, bold, links, code, and Mermaid diagrams) up to about 800 words. New content replaces the old content, and the previous version is kept. If the new content contradicts or restates another memory, that one is archived and listed in replacedMemoryIds.",
       inputSchema: {
         brain: brainIdSchema,
         memoryId: z.string().min(1),
@@ -383,13 +383,15 @@ export function createBrainMcpServer(brain: Brain, options: { version?: string }
           throw new BrainToolError("Provide at least one field to update.", "invalid_request");
         }
         const who = client();
-        const memory = await brain.updateMemory(memoryId, updates, who.provider, who.name);
-        if (!memory) throw new BrainToolError("Memory not found in this brain.", "not_found");
+        const result = await brain.updateMemoryWithResult(memoryId, updates, who.provider, who.name);
+        if (!result) throw new BrainToolError("Memory not found in this brain.", "not_found");
+        const { memory } = result;
         recordUsage({ brainId, writes: 1, tokensIn: content != null ? estimateTokens(memory.content) : 0 });
         return jsonResult({
           action: "update",
           brain: brainId,
           memory: serializeMemory(memory, { versionCount: versionCount(memory.id) }),
+          ...(result.supersededIds.length > 0 ? { replacedMemoryIds: result.supersededIds } : {}),
         });
       } catch (error) {
         return toolError(error);

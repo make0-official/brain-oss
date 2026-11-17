@@ -205,7 +205,7 @@ export async function runImport(brain: Brain, files: ImportFile[], options: Impo
 
   for (const item of toUpdate) {
     const id = item.existing!.id;
-    await brain.updateMemory(id, { content: item.content, category: item.category }, "make0");
+    await brain.updateMemory(id, { content: item.content, category: item.category }, "make0", null, { supersede: "none" });
     brain.store.updateMemory(id, { metadata: metadataFor(item) }, { recordVersion: false });
     remember(item, id);
     summary.updated += 1;

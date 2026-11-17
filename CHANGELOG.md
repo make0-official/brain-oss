@@ -4,6 +4,14 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+- **Your database is backed up before an upgrade changes it.** This release adds a column, so the first time it opens `brain.db` it copies the file to `brain.pre-upgrade-v7-<date>-<time>.db` in the same folder and prints one line saying it is upgrading and where the copy is. If the copy cannot be written, the database is left as it was. Every later release that migrates the database does the same.
+- **Fewer wrong replacements without an LLM.** A newer memory now replaces an older one only when the two say the same thing with opposite polarity. "I like dark mode" and "I dislike light mode", or tabs in Go and tabs in Python, used to archive the older memory and are now both kept. A correction replaces the one memory it matches most closely instead of every memory that shares enough words.
+- **The LLM judge sees reworded updates.** With an API key or a local model, the memories sent to the judge are now chosen by embedding similarity as well as shared words, so "I'm based in Bangalore now" is compared with "My home city is Pune".
+- **`update_memory` checks for contradictions.** An edit that now contradicts or restates another memory archives that one and returns it in `replacedMemoryIds`, as `add_memory` does. The edited text is kept as written.
+- **Archived memories record what replaced them.** In the viewer, the recycle bin marks each memory as Deleted or Replaced, and a replaced one shows the memory that took its place and who wrote it; click it to open that memory. An open memory now shows its text read-only with an Edit button, and below it one History timeline of its edits and the older memories it replaced, each with a Recover link. Restoring a memory clears the link.
+- **The viewer header fits small screens.** Below 1024px the search box and buttons move to their own row and the board and memory panel start below them, so the open memory no longer slides under the header. On phones the "Connect / import / export" button is shortened to "Connect".
+- Library: `Brain.updateMemoryWithResult` returns the replaced ids, `Memory.supersededBy` is new, and `resolveSupersession` no longer takes a `pairScorer`.
+
 ## [0.3.4] - 2026-11-17
 
 - **Model servers on your home network work without a key.** A `MAKE0_BRAIN_LLM_BASE_URL` on a private address (`192.168.x`, `10.x`, `172.16`–`31.x`, Tailscale's `100.64`–`127.x`, IPv6 `fc00::/7` and `fe80::/10`) or a `.local`, `.lan`, `.home.arpa`, or `.internal` name now gets the same handling as localhost: no key needed, longer timeouts, `llama3.2` as the default model, and search on the local reranker. A hosted provider's key is never sent to it. Before, such a URL with no key quietly turned the LLM features off. Thanks to Sergey Aleksanyan for the report.

@@ -21,6 +21,7 @@ function memory(id: string): Memory {
     lastWrittenVia: "claude",
     deletedAt: null,
     deletedVia: null,
+    supersededBy: null,
     discoveredAt: "",
     createdAt: "",
     updatedAt: "",

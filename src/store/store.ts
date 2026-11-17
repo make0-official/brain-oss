@@ -19,7 +19,7 @@ import {
   type UserBrain,
 } from "../shared/types";
 import { memoryVersionFieldsChanged, normalizeWriterName, resolveMemoryWrittenBy } from "../shared/writer";
-import { migrate } from "./schema";
+import { migrate, type MigrateOptions } from "./schema";
 
 export class BrainStoreError extends Error {
   constructor(
@@ -86,6 +86,7 @@ type MemoryRow = {
   last_written_via: MemoryOriginProvider;
   deleted_at: string | null;
   deleted_via: MemoryOriginProvider | null;
+  superseded_by: string | null;
   discovered_at: string;
   created_at: string;
   updated_at: string;
@@ -192,6 +193,7 @@ function rowToMemory(row: MemoryRow): Memory {
     lastWrittenVia: row.last_written_via,
     deletedAt: row.deleted_at,
     deletedVia: row.deleted_via,
+    supersededBy: row.superseded_by ?? null,
     discoveredAt: row.discovered_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -241,7 +243,7 @@ export class BrainStore {
   readonly db: Database.Database;
   private clock: () => Date;
 
-  constructor(filename: string, options: { now?: () => Date } = {}) {
+  constructor(filename: string, options: { now?: () => Date; onUpgrade?: MigrateOptions["onUpgrade"] } = {}) {
     if (filename !== ":memory:") {
       fs.mkdirSync(path.dirname(filename), { recursive: true });
     }
@@ -249,7 +251,7 @@ export class BrainStore {
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.clock = options.now ?? (() => new Date());
-    migrate(this.db);
+    migrate(this.db, { filename, now: this.clock, onUpgrade: options.onUpgrade });
   }
 
   close(): void {
@@ -430,19 +432,26 @@ export class BrainStore {
     return this.getMemory(id);
   }
 
-  /** Archive: hidden from reads and search, versions kept. Idempotent. */
-  archiveMemory(id: string, via: MemoryOriginProvider): boolean {
+  /**
+   * Archive: hidden from reads and search, versions kept. Idempotent.
+   * `supersededBy` is the memory that replaced this one, when there is one.
+   */
+  archiveMemory(id: string, via: MemoryOriginProvider, supersededBy?: string | null): boolean {
     const memory = this.getMemory(id, { includeArchived: true });
     if (!memory) return false;
     if (memory.deletedAt) return true;
     this.db
-      .prepare("UPDATE memories SET deleted_at = ?, deleted_via = ? WHERE id = ? AND deleted_at IS NULL")
-      .run(this.now(), via, id);
+      .prepare(
+        "UPDATE memories SET deleted_at = ?, deleted_via = ?, superseded_by = ? WHERE id = ? AND deleted_at IS NULL",
+      )
+      .run(this.now(), via, supersededBy ?? null, id);
     return true;
   }
 
   restoreMemory(id: string): Memory | undefined {
-    this.db.prepare("UPDATE memories SET deleted_at = NULL, deleted_via = NULL WHERE id = ?").run(id);
+    this.db
+      .prepare("UPDATE memories SET deleted_at = NULL, deleted_via = NULL, superseded_by = NULL WHERE id = ?")
+      .run(id);
     return this.getMemory(id);
   }
 
