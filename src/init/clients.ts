@@ -7,8 +7,15 @@ export const SERVER_NAME = "make0-brain";
 export const MAKE0_SYSTEM_INSTRUCTION =
   "Make0 Brain is my source of truth for durable memory. Always search it before answering about me, my work, people, preferences, or past decisions. Save lasting facts and decisions to Brain. Never guess or invent memories. Use Brain exclusively for durable memory.";
 
+/** Rule for a repo's shared CLAUDE.md / AGENTS.md: collaborators may not have Make0 Brain connected. */
+export const MAKE0_PROJECT_INSTRUCTION =
+  "If Make0 Brain is connected, search it before answering about the user, their work, people, preferences, or past decisions, and save lasting facts and decisions there. Never guess or invent memories. If it is not connected, ignore this section.";
+
 const RULES_BEGIN = "<!-- make0-brain:begin -->";
 const RULES_END = "<!-- make0-brain:end -->";
+/** Footer (on by default) for CLAUDE.md / AGENTS.md, so people and agents reading the file see where the memory comes from. */
+export const SYNC_MARKER = "<!-- memory synced by Make0 Brain -->";
+const MARKER_FILES = new Set(["CLAUDE.md", "AGENTS.md"]);
 
 export type InitEnv = {
   home: string;
@@ -282,26 +289,42 @@ function planYamlServer(file: string, existing: string, server: StdioServer): Co
   return { file, status: "updated", contents: next.join("\n") };
 }
 
-export function rulesBlock(): string {
-  return `${RULES_BEGIN}\n## Memory\n\n${MAKE0_SYSTEM_INSTRUCTION}\n${RULES_END}`;
+export function rulesBlock(instruction: string = MAKE0_SYSTEM_INSTRUCTION): string {
+  return `${RULES_BEGIN}\n## Memory\n\n${instruction}\n${RULES_END}`;
 }
 
 /** Remove our block, e.g. before importing a rules file as memories. */
 export function stripRulesBlock(text: string): string {
   const pattern = new RegExp(`${RULES_BEGIN}[\\s\\S]*?${RULES_END}\\n?`, "g");
-  return text.replace(pattern, "");
+  return text.replace(pattern, "").split(`${SYNC_MARKER}\n`).join("").split(SYNC_MARKER).join("");
 }
 
-/** Add or refresh the marked rules block. */
-export function planRulesChange(file: string): ConfigChange {
+/** End the file with the marker line once; only CLAUDE.md and AGENTS.md carry it. */
+function withSyncMarker(file: string, text: string): string {
+  if (!MARKER_FILES.has(path.basename(file)) || text.includes(SYNC_MARKER)) return text;
+  const separator = text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
+  return `${text}${separator}${SYNC_MARKER}\n`;
+}
+
+/** Drop the marker line and the blank line we put before it. */
+function withoutSyncMarker(text: string): string {
+  return text.replace(new RegExp(`\\n?${SYNC_MARKER}\\n?`, "g"), "");
+}
+
+/**
+ * Add or refresh the marked rules block. CLAUDE.md and AGENTS.md also end with SYNC_MARKER
+ * unless `marker` is false, which removes it.
+ */
+export function planRulesChange(file: string, options: { marker?: boolean; instruction?: string } = {}): ConfigChange {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-  const block = rulesBlock();
+  const block = rulesBlock(options.instruction);
+  const finish = (text: string) => (options.marker === false ? withoutSyncMarker(text) : withSyncMarker(file, text));
   if (existing.includes(RULES_BEGIN)) {
-    const next = existing.replace(new RegExp(`${RULES_BEGIN}[\\s\\S]*?${RULES_END}`), block);
+    const next = finish(existing.replace(new RegExp(`${RULES_BEGIN}[\\s\\S]*?${RULES_END}`), block));
     return next === existing ? { file, status: "unchanged" } : { file, status: "updated", contents: next };
   }
   const separator = existing.trim() ? (existing.endsWith("\n") ? "\n" : "\n\n") : "";
-  return { file, status: "added", contents: `${existing}${separator}${block}\n` };
+  return { file, status: "added", contents: finish(`${existing}${separator}${block}\n`) };
 }
 
 /** Write a planned change, keeping one backup of the previous file. */

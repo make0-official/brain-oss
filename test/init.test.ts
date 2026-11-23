@@ -11,8 +11,9 @@ import {
   planRulesChange,
   resolveMcpClientId,
   stripRulesBlock,
+  SYNC_MARKER,
 } from "../src/init/clients";
-import { runInit } from "../src/init/run";
+import { runInit, runProjectInit } from "../src/init/run";
 import { parseClientSelection, promptForClients } from "../src/init/select";
 
 function tempHome(): InitEnv {
@@ -141,6 +142,29 @@ test("rules block is added once and stripped for import", () => {
   assert.equal(stripRulesBlock(change.contents!).trim(), "# My rules\n\nUse pnpm.");
 });
 
+test("sync marker ends CLAUDE.md / AGENTS.md once by default, --no-marker removes it, import strips it", () => {
+  const env = tempHome();
+  const file = path.join(env.home, ".claude", "CLAUDE.md");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "# My rules\n\nUse pnpm.\n");
+
+  const change = planRulesChange(file);
+  assert.ok(change.contents!.endsWith(`<!-- make0-brain:end -->\n\n${SYNC_MARKER}\n`));
+  fs.writeFileSync(file, change.contents!);
+  assert.equal(planRulesChange(file).status, "unchanged");
+  assert.equal(stripRulesBlock(change.contents!).trim(), "# My rules\n\nUse pnpm.");
+
+  const removed = planRulesChange(file, { marker: false });
+  assert.equal(removed.status, "updated");
+  assert.ok(removed.contents!.endsWith("<!-- make0-brain:end -->\n"));
+  assert.ok(!removed.contents!.includes(SYNC_MARKER));
+
+  const gemini = path.join(env.home, ".gemini", "GEMINI.md");
+  assert.ok(!planRulesChange(gemini).contents!.includes(SYNC_MARKER));
+  const agents = path.join(env.home, ".codex", "AGENTS.md");
+  assert.ok(planRulesChange(agents).contents!.endsWith(`${SYNC_MARKER}\n`));
+});
+
 test("runInit writes configs and rules, backs up, and is idempotent", async () => {
   const env = tempHome();
   fs.mkdirSync(path.join(env.home, ".claude"));
@@ -262,4 +286,31 @@ test("unknown client ids are rejected", async () => {
     runInit({ env: tempHome(), clientIds: ["notepad"], confirm: async () => true, log: () => {}, claudeCli: null }),
     /Unknown client: notepad/,
   );
+});
+
+test("runProjectInit creates CLAUDE.md and AGENTS.md with the marker when the repo has neither", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "make0-repo-"));
+  const result = await runProjectInit({ cwd, confirm: async () => true, log: () => {} });
+  assert.equal(result.written.length, 2);
+  for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+    const text = fs.readFileSync(path.join(cwd, name), "utf8");
+    assert.match(text, /make0-brain:begin/);
+    assert.match(text, /If Make0 Brain is connected/);
+    assert.ok(!text.includes("my source of truth"));
+    assert.ok(text.endsWith(`${SYNC_MARKER}\n`));
+    assert.equal(fs.existsSync(path.join(cwd, `${name}.make0-backup`)), false);
+  }
+  const again = await runProjectInit({ cwd, confirm: async () => true, log: () => {} });
+  assert.deepEqual(again.written, []);
+});
+
+test("runProjectInit only touches the rule files the repo already has", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "make0-repo-"));
+  fs.writeFileSync(path.join(cwd, "AGENTS.md"), "# Repo\n\nRun npm test.\n");
+  await runProjectInit({ cwd, marker: false, confirm: async () => true, log: () => {} });
+  assert.equal(fs.existsSync(path.join(cwd, "CLAUDE.md")), false);
+  const text = fs.readFileSync(path.join(cwd, "AGENTS.md"), "utf8");
+  assert.ok(text.startsWith("# Repo\n\nRun npm test.\n"));
+  assert.match(text, /make0-brain:end -->\n$/);
+  assert.ok(!text.includes(SYNC_MARKER));
 });

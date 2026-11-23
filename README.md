@@ -86,6 +86,10 @@ Make0 Brain is my source of truth for durable memory. Always search it before an
 | Hermes Agent   | `~/.hermes/SOUL.md`. Paste it.                           |
 | OpenClaw       | `~/.openclaw/workspace/AGENTS.md`. Paste it.             |
 
+`init` also ends `CLAUDE.md` and `AGENTS.md` with `<!-- memory synced by Make0 Brain -->`, so people and agents reading the file can tell where the memory comes from. Leave it out, or remove it, with `init --no-marker`.
+
+To give everyone on a project the rule, run `init --project` in the repo and commit the result. It adds the block to the repo's `CLAUDE.md` and `AGENTS.md` (the ones that exist, or both when neither does). The project wording is softer: agents search Brain only if it is connected, so collaborators without it are not affected.
+
 Skip the rule with `init --no-rules`.
 
 **2. Bring in the context you already have.**

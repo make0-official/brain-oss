@@ -36,7 +36,7 @@ import {
 import { collectImportFiles, detectAgentFiles, type ImportFile } from "./import/sources";
 import { detectClients } from "./init/clients";
 import { prefetchModels } from "./init/models";
-import { runInit } from "./init/run";
+import { runInit, runProjectInit } from "./init/run";
 import { promptForClients } from "./init/select";
 import { resolveLlmConfig } from "./llm/client";
 import { createBrainMcpServer } from "./mcp/server";
@@ -62,6 +62,9 @@ Usage:
                                    VS Code, Codex, Gemini CLI)
       --clients <ids>              Skip the prompt; only these (comma-separated)
       --no-rules                   Skip the "search Brain first" rule
+      --project                    Instead, add the rule to this repo's CLAUDE.md / AGENTS.md
+                                   (the ones that exist, or both) for collaborators to commit
+      --no-marker                  Leave out (or remove) the <!-- memory synced by Make0 Brain --> line
       --no-models                  Skip downloading the local models now
       --dry-run, --yes
   make0-brain import <path…>       Import Markdown files, folders, or an Obsidian vault
@@ -176,6 +179,16 @@ async function chooseInitClients(args: string[]): Promise<string[] | undefined> 
 }
 
 async function init(args: string[]): Promise<void> {
+  if (args.includes("--project")) {
+    await runProjectInit({
+      cwd: process.cwd(),
+      marker: !args.includes("--no-marker"),
+      dryRun: args.includes("--dry-run"),
+      confirm: () => confirm("\nApply these changes?", args, true),
+      log: (line) => console.log(line),
+    });
+    return;
+  }
   const framed = canPrompt(args);
   if (framed) ui.intro("connect your agents");
   const clientIds = await chooseInitClients(args);
@@ -188,6 +201,7 @@ async function init(args: string[]): Promise<void> {
     env: { home: os.homedir(), platform: process.platform, appData: process.env.APPDATA },
     clientIds,
     rules: !args.includes("--no-rules"),
+    marker: !args.includes("--no-marker"),
     dryRun: args.includes("--dry-run"),
     confirm: framed ? () => clackSteps()(2).confirm("Changes", ["The changes above are backed up to .make0-backup first."], "Apply these changes?") : () => confirm("\nApply these changes?", args, true),
     log: (line) => console.log(line),

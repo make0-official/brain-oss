@@ -1,9 +1,12 @@
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import {
   applyChange,
   type ConfigChange,
   detectClients,
   type InitEnv,
+  MAKE0_PROJECT_INSTRUCTION,
   MAKE0_SYSTEM_INSTRUCTION,
   MCP_CLIENTS,
   type McpClient,
@@ -18,6 +21,8 @@ export type InitOptions = {
   /** Limit to these client ids; default every detected client. */
   clientIds?: string[];
   rules?: boolean;
+  /** End CLAUDE.md / AGENTS.md with the "memory synced by Make0 Brain" line; default true, false removes it. */
+  marker?: boolean;
   dryRun?: boolean;
   /** Asked once with the plan; false aborts. */
   confirm: (plan: string) => Promise<boolean>;
@@ -72,7 +77,7 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
       client,
       viaCli,
       config: viaCli ? undefined : planConfigChange(client, env),
-      rules: options.rules !== false && client.rulesPath ? planRulesChange(client.rulesPath(env)) : undefined,
+      rules: options.rules !== false && client.rulesPath ? planRulesChange(client.rulesPath(env), { marker: options.marker !== false }) : undefined,
     };
   });
 
@@ -123,4 +128,42 @@ export async function runInit(options: InitOptions): Promise<{ configured: strin
     log(`\n  "${MAKE0_SYSTEM_INSTRUCTION}"`);
   }
   return { configured };
+}
+
+/** Agent rule files a repo can carry; CLAUDE.md for Claude Code, AGENTS.md for Codex, Cursor, Copilot and others. */
+export const PROJECT_RULE_FILES = ["CLAUDE.md", "AGENTS.md"] as const;
+
+export type ProjectInitOptions = {
+  /** Repo root. */
+  cwd: string;
+  marker?: boolean;
+  dryRun?: boolean;
+  confirm: (plan: string) => Promise<boolean>;
+  log: (line: string) => void;
+};
+
+/**
+ * Add the "search Brain first" block to the repo's CLAUDE.md / AGENTS.md so everyone who clones it,
+ * and their agents, get it. Updates the files that exist; creates both when neither does.
+ * No .make0-backup here: git is the backup, and a stray file would end up committed.
+ */
+export async function runProjectInit(options: ProjectInitOptions): Promise<{ written: string[] }> {
+  const { cwd, log } = options;
+  const existing = PROJECT_RULE_FILES.map((name) => path.join(cwd, name)).filter((file) => fs.existsSync(file));
+  const files = existing.length > 0 ? existing : PROJECT_RULE_FILES.map((name) => path.join(cwd, name));
+  const changes = files.map((file) =>
+    planRulesChange(file, { marker: options.marker !== false, instruction: MAKE0_PROJECT_INSTRUCTION }),
+  );
+
+  const lines = ["Make0 Brain rule for this repo:", ...changes.map((change) => `  • ${path.relative(cwd, change.file)} (${change.status})`)];
+  log(lines.join("\n"));
+  const pending = changes.filter((change) => change.contents !== undefined);
+  if (options.dryRun || pending.length === 0) return { written: [] };
+  if (!(await options.confirm(lines.join("\n")))) {
+    log("Nothing changed.");
+    return { written: [] };
+  }
+  for (const change of pending) fs.writeFileSync(change.file, change.contents!);
+  log(`\nDone. Commit ${pending.map((change) => path.relative(cwd, change.file)).join(" and ")} so collaborators get it too.`);
+  return { written: pending.map((change) => change.file) };
 }
