@@ -4,6 +4,11 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-23
+
+- **`init --project` puts the rule in a repo.** Run it in a repo root and it adds the Brain rule to the repo's `CLAUDE.md` and `AGENTS.md` (the ones that exist, or both when neither does), so collaborators who clone it get it too. The wording is softer than the global rule: agents use Brain only if it is connected and otherwise ignore the section. No `.make0-backup` file is written there, since git keeps the old version.
+- **Agent setup files say where their memory comes from.** `init` now ends `CLAUDE.md` and `AGENTS.md` with `<!-- memory synced by Make0 Brain -->`. `init --no-marker` leaves the line out, or removes it. Import strips it along with the rule block.
+
 ## [0.4.0] - 2026-11-17
 
 - **Your database is backed up before an upgrade changes it.** This release adds a column, so the first time it opens `brain.db` it copies the file to `brain.pre-upgrade-v7-<date>-<time>.db` in the same folder and prints one line saying it is upgrading and where the copy is. If the copy cannot be written, the database is left as it was. Every later release that migrates the database does the same.
@@ -91,7 +96,8 @@ All notable changes to Make0 Brain. Versions follow [semver](https://semver.org)
 - Hybrid search (MiniLM + BM25 + cross-encoder, two-hop graph expansion), per-write versions with writer attribution, archive and restore.
 - `init` for MCP clients; import from Markdown, Obsidian, and agent rule files; Markdown and JSON export; a local viewer; optional bring-your-own-key LLM features.
 
-[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/make0-official/brain-oss/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/make0-official/brain-oss/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/make0-official/brain-oss/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/make0-official/brain-oss/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/make0-official/brain-oss/compare/v0.3.2...v0.3.3
